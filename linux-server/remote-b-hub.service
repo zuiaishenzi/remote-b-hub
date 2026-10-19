@@ -1,0 +1,23 @@
+[Unit]
+Description=Remote PC B Task Relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=remotebhub
+Group=remotebhub
+WorkingDirectory=/opt/remote-b-hub
+EnvironmentFile=/etc/remote-b-hub/hub.env
+ExecStart=/opt/remote-b-hub/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 18765 --workers 1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/remote-b-hub
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
