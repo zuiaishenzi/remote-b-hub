@@ -126,7 +126,8 @@ def _build_part(sw, recipe, path):
                 "Polygon requires explicit engineering dimensions; "
                 "use allow_underdefined=true only for legacy approximations")
         print(f"[SW] step {index}: check/complete sketch constraints", flush=True)
-        sketch_status = fully_define_or_fail(model, sketch_mgr, strict=strict)
+        sketch_status = fully_define_or_fail(
+            model, sketch_mgr, strict=strict, auto_define=op["profile"]["type"] != "circle")
         profile_geometry = None
         if op["profile"]["type"] == "circle":
             print(f"[SW] step {index}: verify solved circle center/radius in sketch coordinates", flush=True)

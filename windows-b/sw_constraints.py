@@ -4,7 +4,7 @@ SolidWorks 2023 / pywin32 COM: not yet validated on the target workstation.
 """
 from contextlib import contextmanager
 import math
-from solidworks_box import com_read
+from solidworks_box import com_read, find_feature
 
 # swUserPreferenceToggle_e.swInputDimValOnCreate (late-bound COM constant).
 SW_INPUT_DIM_VAL_ON_CREATE = 10
@@ -41,14 +41,16 @@ def read_status(sketch):
         raise RuntimeError(f"Unknown ISketch constraint status: {status!r}")
     return status
 
-def dimension_info(display_dimension, expected_mm, key):
+def dimension_info(display_dimension, expected_mm, key, magnitude=False):
     if display_dimension is None:
         raise RuntimeError(f"Driving dimension {key} was not created")
     dimension = display_dimension.GetDimension2(0)
     if dimension is None:
         raise RuntimeError(f"Model dimension for {key} is missing")
     value = float(com_read(dimension, "SystemValue")) * 1000
-    if abs(value - expected_mm) > 0.01:
+    if magnitude:
+        value = abs(value)
+    if not math.isfinite(value) or abs(value - expected_mm) > 0.01:
         raise RuntimeError(
             f"Dimension {key} measured {value:.6f} mm; expected {expected_mm:.6f}")
     full_name = str(com_read(dimension, "FullName"))
@@ -56,6 +58,68 @@ def dimension_info(display_dimension, expected_mm, key):
         raise RuntimeError(f"Dimension {key} has no stable model name")
     return {"role": key, "dimension": full_name, "mm": round(value, 6),
             "driving_dimension_created": True}
+
+
+def add_circle_position_dimensions(model, circle, profile):
+    """Locate the center against the actual model origin, without fixing it.
+
+    Nonzero coordinates use horizontal/vertical driving dimensions; zero
+    coordinates use point relations so no zero-length dimension is created.
+    The origin feature is located by type, independent of UI language/name.
+    """
+    sketch = com_read(model, "GetActiveSketch2")
+    if read_status(sketch) == SW_FULLY_DEFINED:
+        return []  # For example, an origin-centered circle already coincident.
+    feature = find_feature(model, "OriginProfileFeature")
+    if feature is None:
+        raise RuntimeError("Cannot find the model origin feature for circle positioning")
+    origin_sketch = com_read(feature, "GetSpecificFeature2")
+    points = com_read(origin_sketch, "GetSketchPoints2") if origin_sketch is not None else None
+    if not isinstance(points, (list, tuple)) or len(points) != 1:
+        raise RuntimeError("Expected one actual origin sketch point")
+    origin = points[0]
+    center = com_read(circle, "GetCenterPoint2")
+    if center is None:
+        raise RuntimeError("Circle center point is unavailable for positioning")
+    data = create_select_data(model)
+
+    def select_points():
+        model.ClearSelection2(True)
+        if not origin.Select4(False, data) or not center.Select4(True, data):
+            raise RuntimeError("Cannot select origin and circle center for positional constraints")
+
+    cx, cy = profile["cx_mm"], profile["cy_mm"]
+    dimensions = []
+    try:
+        if cx == 0 and cy == 0:
+            select_points()
+            print("[SW] circle center: coincident with model origin", flush=True)
+            model.SketchAddConstraints("sgCOINCIDENT")
+            return dimensions
+        for axis, coordinate in (("x", cx), ("y", cy)):
+            # Do not add duplicate constraints after an existing infer relation
+            # plus the first dimension has already defined the circle.
+            if read_status(sketch) == SW_FULLY_DEFINED:
+                break
+            select_points()
+            if coordinate == 0:
+                relation = "sgVERTPOINTS2D" if axis == "x" else "sgHORIZONTALPOINTS2D"
+                print(f"[SW] circle center {axis}=0 mm: {relation} relative to origin", flush=True)
+                model.SketchAddConstraints(relation)
+            else:
+                print(f"[SW] circle center {axis}={coordinate} mm: create driving dimension from origin", flush=True)
+                if axis == "x":
+                    display = model.AddHorizontalDimension2(cx / 2000, cy / 1000 + .012, 0)
+                else:
+                    display = model.AddVerticalDimension2(cx / 1000 + .012, cy / 2000, 0)
+                item = dimension_info(display, abs(coordinate), f"center_{axis}", magnitude=True)
+                # Dimension magnitudes are positive; geometry verification checks
+                # the requested signed side of the origin independently.
+                item["coordinate_mm"] = coordinate
+                dimensions.append(item)
+        return dimensions
+    finally:
+        model.ClearSelection2(True)
 
 def create_select_data(model):
     """Use the Automation property, without invoking a returned COM interface.
@@ -114,6 +178,7 @@ def add_explicit_dimensions(model, sketch_manager, profile, created):
                                                cy + radius * 1.8, 0)
         info = [dimension_info(display, profile["radius_mm"] * 2, "diameter")]
         model.ClearSelection2(True)
+        info.extend(add_circle_position_dimensions(model, created, profile))
         return info
     if not isinstance(created, (list, tuple)):
         raise RuntimeError("CreateCenterRectangle did not return sketch segments")
@@ -142,11 +207,11 @@ def add_explicit_dimensions(model, sketch_manager, profile, created):
     model.ClearSelection2(True)
     return result
 
-def fully_define_or_fail(model, sketch_manager, strict=True):
+def fully_define_or_fail(model, sketch_manager, strict=True, auto_define=True):
     # Must execute before leaving sketch-edit mode.
     sketch = com_read(model, "GetActiveSketch2")
     status = read_status(sketch)
-    if status == 2 and strict:
+    if status == 2 and strict and auto_define:
         model.ClearSelection2(True)
         # Signature positions 6 and 8 are object references (HorizontalDatumDisp
         # and VerticalDatumDisp). Python None can become VT_NULL in late binding,

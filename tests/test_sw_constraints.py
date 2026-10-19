@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "windows-b"))
 from sw_constraints import (add_explicit_dimensions, create_select_data, select_segment, fully_define_or_fail,
-                            verify_circle_geometry,
+                            verify_circle_geometry, add_circle_position_dimensions,
                             suppress_dimension_input, SW_INPUT_DIM_VAL_ON_CREATE)
 from solidworks_box import com_read
 
@@ -207,8 +207,9 @@ class ConstraintLengthRegressionTests(unittest.TestCase):
         model.SelectionManager = None
         segment = PropertyLengthSegment(0.03)
         segment.Select2 = Mock(return_value=True)
-        dimensions = add_explicit_dimensions(model, None, {
-            "type": "circle", "cx_mm": 0, "cy_mm": 0, "radius_mm": 15}, segment)
+        with patch("sw_constraints.add_circle_position_dimensions", return_value=[]):
+            dimensions = add_explicit_dimensions(model, None, {
+                "type": "circle", "cx_mm": 0, "cy_mm": 0, "radius_mm": 15}, segment)
         self.assertEqual(dimensions[0]["role"], "diameter")
         self.assertEqual(dimensions[0]["mm"], 30)
         segment.Select2.assert_called_once_with(False, 0)
@@ -371,6 +372,91 @@ class FullyDefineRegressionTests(unittest.TestCase):
             circle = type("Circle", (), {"GetCenterPoint2": center, "GetRadius": radius})()
             with self.subTest(x=x, radius=radius), self.assertRaisesRegex(RuntimeError, "refusing to save"):
                 verify_circle_geometry(circle, {"cx_mm": 20, "cy_mm": 12, "radius_mm": 4})
+
+
+class CirclePositionRegressionTests(unittest.TestCase):
+    def setup_geometry(self, x, y, status=2):
+        from types import SimpleNamespace
+        origin = SimpleNamespace(Select4=Mock(return_value=True))
+        center = SimpleNamespace(Select4=Mock(return_value=True))
+        circle = SimpleNamespace(GetCenterPoint2=center)
+        sketch = SimpleNamespace(GetConstrainedStatus=status)
+        feature = SimpleNamespace(GetSpecificFeature2=SimpleNamespace(GetSketchPoints2=(origin,)))
+        model = MockModel([])
+        model.GetActiveSketch2 = sketch
+        model.SketchAddConstraints = Mock()
+        model.AddHorizontalDimension2 = Mock(return_value=MockDisplayDimension(abs(x) / 1000, "D2@Sketch1"))
+        model.AddVerticalDimension2 = Mock(return_value=MockDisplayDimension(abs(y) / 1000, "D3@Sketch1"))
+        return model, circle, feature, origin, center
+
+    def check_case(self, x, y):
+        model, circle, feature, origin, center = self.setup_geometry(x, y)
+        with patch("sw_constraints.find_feature", return_value=feature) as find:
+            result = add_circle_position_dimensions(model, circle, {"cx_mm": x, "cy_mm": y})
+        find.assert_called_once_with(model, "OriginProfileFeature")
+        for call in origin.Select4.call_args_list:
+            self.assertIs(call.args[0], False)
+            self.assertEqual(call.args[1].Mark, 0)
+        for call in center.Select4.call_args_list:
+            self.assertIs(call.args[0], True)
+        return model, result
+
+    def test_positive_and_negative_x_on_axis(self):
+        for x in (20, -20):
+            with self.subTest(x=x):
+                model, result = self.check_case(x, 0)
+                self.assertEqual(result[0]["role"], "center_x")
+                self.assertEqual(result[0]["coordinate_mm"], x)
+                self.assertEqual(result[0]["mm"], 20)
+                model.SketchAddConstraints.assert_called_once_with("sgHORIZONTALPOINTS2D")
+                model.AddVerticalDimension2.assert_not_called()
+
+    def test_y_axis_uses_vertical_distance_and_vertical_relation(self):
+        model, result = self.check_case(0, -12)
+        self.assertEqual(result[0]["role"], "center_y")
+        self.assertEqual(result[0]["coordinate_mm"], -12)
+        model.SketchAddConstraints.assert_called_once_with("sgVERTPOINTS2D")
+        model.AddHorizontalDimension2.assert_not_called()
+
+    def test_both_nonzero_coordinates_get_driving_dimensions(self):
+        model, result = self.check_case(20, 12)
+        self.assertEqual([item["role"] for item in result], ["center_x", "center_y"])
+        model.SketchAddConstraints.assert_not_called()
+
+    def test_origin_uses_coincidence_and_no_zero_dimensions(self):
+        model, result = self.check_case(0, 0)
+        self.assertEqual(result, [])
+        model.SketchAddConstraints.assert_called_once_with("sgCOINCIDENT")
+        model.AddHorizontalDimension2.assert_not_called()
+        model.AddVerticalDimension2.assert_not_called()
+
+    def test_already_fully_defined_circle_skips_duplicate_relations(self):
+        model, circle, *_ = self.setup_geometry(0, 0, status=3)
+        with patch("sw_constraints.find_feature") as find:
+            self.assertEqual(add_circle_position_dimensions(model, circle, {"cx_mm": 0, "cy_mm": 0}), [])
+        find.assert_not_called()
+
+    def test_missing_origin_is_an_error(self):
+        model, circle, *_ = self.setup_geometry(20, 0)
+        with patch("sw_constraints.find_feature", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "model origin"):
+                add_circle_position_dimensions(model, circle, {"cx_mm": 20, "cy_mm": 0})
+        model.AddHorizontalDimension2.assert_not_called()
+
+    def test_point_selection_failure_does_not_create_dimension(self):
+        model, circle, feature, origin, _ = self.setup_geometry(20, 0)
+        origin.Select4.return_value = False
+        with patch("sw_constraints.find_feature", return_value=feature):
+            with self.assertRaisesRegex(RuntimeError, "Cannot select"):
+                add_circle_position_dimensions(model, circle, {"cx_mm": 20, "cy_mm": 0})
+        model.AddHorizontalDimension2.assert_not_called()
+
+    def test_circle_strict_check_never_falls_back_to_auto_definition(self):
+        model, *_ = self.setup_geometry(20, 0)
+        manager = Mock()
+        with self.assertRaisesRegex(RuntimeError, "under-defined"):
+            fully_define_or_fail(model, manager, strict=True, auto_define=False)
+        manager.FullyDefineSketch.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -19,13 +19,35 @@ Windows B / SOLIDWORKS 31.5.0 已能连接 COM 并生成严格的无孔矩形块
 它与空 `IDispatch` 不同。报错的 arg-error 数字不能单独当作 Python 从 1 起算的参数号。
 
 执行器现在分别传入 `win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)`，
-其余尺寸方案与关系选项保持不变。这一改变针对类型问题，不保证自动求解一定成功。
+这一次参数类型修复本身不保证自动求解一定成功。
 调用不做循环重试，异常后清空选择并失败退出；调用返回值不作为成功凭据，必须重新读取
 `GetConstrainedStatus` 并满足 fully_defined。仍欠定义、过定义或状态异常时禁止保存。
 
 圆草图解算后额外读取圆心和半径，按草图坐标核对 `cx_mm`、`cy_mm`、`radius_mm`，
 允差 0.01 mm；非有限值、圆心移动或半径不符时失败，不固定圆心、不改变配方绕过问题。
 成功结果的 `sketches[].profile_geometry` 返回实际读数。
+
+## 后续实机结果：类型错误消失，但偏心圆仍欠定义
+
+用户在 x=20、y=0、半径 4 mm 的最小测试中确认：显式空对象参数可调用，
+返回 0，但真实草图状态仍欠定义。截图只有 Ø8 尺寸，圆为蓝色，未完成圆心定位。
+因此，仅修复参数封送不足以完成这张草图，不能将该版本称为偏心孔建模已通过。
+
+后续执行器新增明确的圆心定位，**圆草图不再依赖 FullyDefineSketch 自动求解**：
+
+- 通过 `OriginProfileFeature` 特征取得实际模型原点的草图点，避开中英文显示名称差异。
+- 使用实际 ISelectData 选择原点和圆心；选择失败则停止，不盲目添加尺寸。
+- 非零 X/Y 使用水平/垂直驱动距离尺寸；尺寸记录包含带符号的目标坐标。
+- Y=0 使用两点水平关系，X=0 使用两点竖直关系；两者为零时使用重合关系。
+- 已经完全定义时不追加重复约束；圆仍欠定义时直接失败，不回退自动全定义，不固定圆心。
+- 最后仍核对真实全约束状态、带符号的圆心位置和半径，禁止保存不合格结果。
+
+对于截图中的测试，预期新增相对原点的水平距离 20 mm，以及圆心与原点的水平关系。
+关系不会显示为一个“Y=0”的零尺寸。成功结果的 driving_dimensions 应包含
+diameter 和 center_x；双轴非零时还应有 center_y。**该显式定位方案仍待 B 实机验收。**
+
+参考：[原点特征/草图点访问示例（作者源码）](https://www.codestack.net/solidworks-api/document/selection/select-standard-ref-geometry/)、
+[官方点约束名称](https://help.solidworks.com/2022/english/api/sldworksapi/solidworks.interop.sldworks~solidworks.interop.sldworks.imodeldoc2~sketchaddconstraints.html)。
 
 参考：[官方方法签名](https://help.solidworks.com/2015/english/api/sldworksapi/SOLIDWORKS.Interop.sldworks~SOLIDWORKS.Interop.sldworks.ISketchManager~FullyDefineSketch.html)、
 [官方 VBA 示例](https://help.solidworks.com/2019/english/api/sldworksapi/Fully_Define_Underdefined_Sketch_Example_VB.htm)、
@@ -49,7 +71,7 @@ py -3 .\windows-b\probe_parametric_part.py --profile offset-circle
 最后一项默认圆心为 (20, 12) mm。模板/输出目录与 GUI 不同时，应显式传入
 `--template '实际模板路径' --output-dir '实际输出目录'`；命令行测试不会自动读取 GUI 的加密配置。
 
-验收输出应包括 `Executor` 指纹、`VT_DISPATCH(null)` 日志（若需要调用自动全定义）、
+验收输出应包括 `Executor` 指纹、`circle center ...` 的定位尺寸/点关系日志（无需自动全定义日志）、
 真实 fully_defined 状态、`profile_geometry.checked: true`、正确的圆心/半径、
 `rebuild_ok: true` 和新文件信息。仍需在 SW 检查尺寸/约束与几何，不仅看保存文件。
 这些单圆测试通过后，才以新名称执行机架的凸台/切孔组合回归；它们本身不证明切孔正确。
