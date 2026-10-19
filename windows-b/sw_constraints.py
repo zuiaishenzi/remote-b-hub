@@ -63,7 +63,7 @@ def add_explicit_dimensions(model, sketch_manager, profile, created):
     for segment in created:
         if bool(com_read(segment, "ConstructionGeometry")):
             continue
-        edges.append((segment, float(segment.GetLength()) * 1000))
+        edges.append((segment, float(com_read(segment, "GetLength")) * 1000))
     if len(edges) < 4:
         raise RuntimeError("No four rectangle edges found for driving dimensions")
     used = set()
