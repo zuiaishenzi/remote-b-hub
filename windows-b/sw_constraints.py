@@ -34,8 +34,17 @@ def dimension_info(display_dimension, expected_mm, key):
             "driving_dimension_created": True}
 
 def select_segment(model, segment):
+    """Select a sketch segment with an actual ISelectData COM object.
+
+    pywin32 may marshal Python None as VT_NULL, whereas ISketchSegment.Select4
+    requires a SelectData interface. Construct it through ISelectionMgr.
+    """
     model.ClearSelection2(True)
-    if not segment.Select4(False, None):
+    select_data = model.SelectionManager.CreateSelectData()
+    if select_data is None:
+        raise RuntimeError("SolidWorks CreateSelectData returned None")
+    select_data.Mark = 0
+    if not segment.Select4(False, select_data):
         raise RuntimeError("Failed to select a sketch segment for a driving dimension")
 
 def add_explicit_dimensions(model, sketch_manager, profile, created):

@@ -25,10 +25,26 @@ class MockDisplayDimension:
         return self.dimension
 
 
+class MockSelectData:
+    def __init__(self):
+        self.Mark = None
+
+
+class MockSelectionManager:
+    def __init__(self):
+        self.created = []
+
+    def CreateSelectData(self):
+        value = MockSelectData()
+        self.created.append(value)
+        return value
+
+
 class MockModel:
     def __init__(self, expected_meters):
         self.values = iter(expected_meters)
         self.index = 0
+        self.SelectionManager = MockSelectionManager()
 
     def ClearSelection2(self, _):
         return True
@@ -44,7 +60,11 @@ class PropertyLengthSegment:
     def __init__(self, meters):
         self.GetLength = meters
 
-    def Select4(self, append, callout):
+    def Select4(self, append, data):
+        if append is not False or not isinstance(data, MockSelectData):
+            raise TypeError("Select4 requires a real SelectData object")
+        if data.Mark != 0:
+            raise ValueError("Dimensions should use selection mark zero")
         return True
 
 
@@ -72,12 +92,18 @@ class ConstraintLengthRegressionTests(unittest.TestCase):
         self.assertEqual([d["role"] for d in dimensions], ["width", "height"])
         self.assertEqual([d["mm"] for d in dimensions], [60.0, 40.0])
         self.assertEqual(model.index, 2)
+        self.assertEqual(len(model.SelectionManager.created), 2)
 
     def test_com_get_length_as_property(self):
         self.check_geometry(PropertyLengthSegment)
 
     def test_com_get_length_as_method(self):
         self.check_geometry(MethodLengthSegment)
+
+    def test_select4_rejects_missing_select_data(self):
+        segment = PropertyLengthSegment(0.06)
+        with self.assertRaises(TypeError):
+            segment.Select4(False, None)
 
 
 if __name__ == "__main__":
