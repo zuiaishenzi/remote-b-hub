@@ -59,7 +59,9 @@ class Launcher:
             self.config = dict(DEFAULTS)
             self.config_error = str(exc)
         self.secret = self.config["token"]
-        root.title("Remote B Hub — 电脑 B 启动器")
+        from desktop_version import runtime_info
+        version = runtime_info()
+        root.title("Remote B Hub — 电脑 B 启动器 — " + version["executor_sha256"][:12])
         root.geometry("1020x780")
         root.minsize(880, 680)
         body = ttk.Frame(root, padding=12)
@@ -103,6 +105,7 @@ class Launcher:
             self.message("配置读取失败，请重新填写并保存: " + self.config_error)
         else:
             self.message("配置位于 " + str(self.directory / "config.json"))
+        self.message("执行器版本: " + json.dumps(version, ensure_ascii=False))
         if not smoke:
             root.after(300, self.check)
             if self.config["auto_start_agent"] and self.config["server_url"] and not self.config_error:
@@ -288,6 +291,8 @@ def main():
             import win32com.client, win32crypt, desktop_worker, sw_recipe
             from desktop_config import protect_token, unprotect_token
             assert unprotect_token(protect_token("self-test-token")) == "self-test-token"
+            from desktop_version import runtime_info
+            assert len(runtime_info()["executor_sha256"]) == 64
             (directory / "self-test.json").write_text(json.dumps({"ok": True, "frozen": bool(getattr(sys, "frozen", False))}), encoding="utf-8")
             return 0
         if args.worker:

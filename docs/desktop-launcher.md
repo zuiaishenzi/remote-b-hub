@@ -54,6 +54,8 @@ SSH 启停 NAS。A 的 MCP、NAS API/schema 不需要升级或增加任意远程
 代理将阶段通过已有 `/progress` API 回传。A 的 `computer_b_job(job_id)` 可看到
 `starting_solidworks`、`solidworks_ready`、`executing`、`modeling` 和 `completed`。
 结果包含 `agent_log_tail`，失败诊断包含 traceback 和 `log_tail`，Token 会被遮盖。
+新版还在 `value.executor` / `diagnostics.executor` 回传执行源码指纹和构建提交；
+启动器标题与启动日志也会显示该版本，方便核对实际部署。
 任务已失败/完成但响应丢失时，旧 NAS 可能返回 409；此时需检查 NAS 任务记录和本地
 pending-result 文件，不应因结果冲突再次执行同一个 CAD 操作。
 

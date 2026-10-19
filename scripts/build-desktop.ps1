@@ -14,7 +14,9 @@ try {
     }
     & $pythonPath -m unittest discover -s tests -p 'test_*.py' -v
     if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed' }
-    & $pythonPath -m PyInstaller --noconfirm --clean --onefile --windowed --name RemoteBHub --paths windows-b --hidden-import win32timezone --hidden-import win32com.client --hidden-import win32com.server --hidden-import win32crypt --hidden-import win32ts windows-b/desktop_launcher.py
+    & $pythonPath windows-b/desktop_version.py build/runtime-info.json
+    if ($LASTEXITCODE -ne 0) { throw 'Could not fingerprint executor sources' }
+    & $pythonPath -m PyInstaller --noconfirm --clean --onefile --windowed --name RemoteBHub --paths windows-b --add-data 'build/runtime-info.json;.' --hidden-import win32timezone --hidden-import win32com.client --hidden-import win32com.server --hidden-import win32crypt --hidden-import win32ts windows-b/desktop_launcher.py
     if ($LASTEXITCODE -ne 0) { throw 'EXE build failed' }
     $testDirectory = Join-Path $repoPath ('build\desktop-self-test-' + [guid]::NewGuid())
     $appPath = Join-Path $repoPath 'dist\RemoteBHub.exe'

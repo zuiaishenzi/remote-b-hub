@@ -60,6 +60,9 @@ def main():
             assert len(results) == 2 and all(item["ok"] for item in results), results
             assert results[0]["value"]["message"] == "pong from PC B"
             assert results[1]["value"]["host"]
+            for result in results:
+                assert len(result["value"]["executor"]["executor_sha256"]) == 64
+                assert result["value"]["executor"]["mode"] == "frozen"
             assert {"received", "executing", "completed"}.issubset(stages), stages
             assert "starting_solidworks" not in stages
             assert token not in (root / "agent.log").read_text(encoding="utf-8")

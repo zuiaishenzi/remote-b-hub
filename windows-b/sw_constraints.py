@@ -3,6 +3,7 @@
 SolidWorks 2023 / pywin32 COM: not yet validated on the target workstation.
 """
 from contextlib import contextmanager
+import math
 from solidworks_box import com_read
 
 # swUserPreferenceToggle_e.swInputDimValOnCreate (late-bound COM constant).
@@ -147,11 +148,20 @@ def fully_define_or_fail(model, sketch_manager, strict=True):
     status = read_status(sketch)
     if status == 2 and strict:
         model.ClearSelection2(True)
-        # SW example passes True for all entities and a H|V relation mask (3).
-        # Treat the API result as advisory; actual sketch state is authoritative.
-        sketch_manager.FullyDefineSketch(True, True, 3, True, 1, None,
-                                         1, None, 1, 1)
-        model.ClearSelection2(True)
+        # Signature positions 6 and 8 are object references (HorizontalDatumDisp
+        # and VerticalDatumDisp). Python None can become VT_NULL in late binding,
+        # unlike VBA Nothing. Explicitly marshal NULL IDispatch references.
+        import pythoncom
+        from win32com.client import VARIANT
+        horizontal_datum = VARIANT(pythoncom.VT_DISPATCH, None)
+        vertical_datum = VARIANT(pythoncom.VT_DISPATCH, None)
+        print("[SW] FullyDefineSketch: datum parameters 6/8 = VT_DISPATCH(null)", flush=True)
+        try:
+            advisory = sketch_manager.FullyDefineSketch(
+                True, True, 3, True, 1, horizontal_datum, 1, vertical_datum, 1, 1)
+            print(f"[SW] FullyDefineSketch returned {advisory!r}; checking actual sketch status", flush=True)
+        finally:
+            model.ClearSelection2(True)
         status = read_status(sketch)
     if status not in (2, 3):
         raise RuntimeError(f"Invalid sketch constraints: {STATUS[status]} (code={status})")
@@ -160,3 +170,21 @@ def fully_define_or_fail(model, sketch_manager, strict=True):
             "Sketch remains under-defined after dimensioning; refusing to save")
     return {"status_code": status, "status": STATUS[status],
             "fully_defined": status == 3}
+
+
+def verify_circle_geometry(segment, profile):
+    """Check circle coordinates in sketch space after the constraint solver ran.
+
+    A full-definition status alone does not prove the requested hole location.
+    Do not silently fix/move entities or accept a different solved position.
+    """
+    center = com_read(segment, "GetCenterPoint2")
+    if center is None:
+        raise RuntimeError("Unable to read the constrained circle center")
+    actual = {"cx_mm": float(com_read(center, "X")) * 1000,
+              "cy_mm": float(com_read(center, "Y")) * 1000,
+              "radius_mm": float(com_read(segment, "GetRadius")) * 1000}
+    for key, value in actual.items():
+        if not math.isfinite(value) or abs(value - profile[key]) > 0.01:
+            raise RuntimeError(f"Constrained circle {key}={value:.6f} mm; expected {profile[key]:.6f}; refusing to save")
+    return {"checked": True, **{key: round(value, 6) for key, value in actual.items()}}

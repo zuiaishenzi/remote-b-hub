@@ -9,7 +9,8 @@ from unittest.mock import Mock, patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "windows-b"))
-from sw_constraints import (add_explicit_dimensions, create_select_data, select_segment,
+from sw_constraints import (add_explicit_dimensions, create_select_data, select_segment, fully_define_or_fail,
+                            verify_circle_geometry,
                             suppress_dimension_input, SW_INPUT_DIM_VAL_ON_CREATE)
 from solidworks_box import com_read
 
@@ -288,6 +289,88 @@ class DimensionDialogRegressionTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, "build failed"):
                 build_part(sw, {}, None)
         self.assertIs(sw.state, True)
+
+
+class FullyDefineRegressionTests(unittest.TestCase):
+    def model_and_manager(self, statuses):
+        class Sketch:
+            def GetConstrainedStatus(self):
+                return next(self.statuses)
+        sketch = Sketch()
+        sketch.statuses = iter(statuses)
+        model = type("Model", (), {})()
+        model.GetActiveSketch2 = sketch
+        model.ClearSelection2 = Mock()
+        manager = type("Manager", (), {})()
+        manager.FullyDefineSketch = Mock(return_value=0)
+        return model, manager
+
+    def com_types(self):
+        try:
+            import pythoncom
+            from win32com.client import VARIANT
+            return pythoncom, VARIANT
+        except ImportError:
+            self.skipTest("pywin32 is required for real VARIANT argument regression")
+
+    def test_real_variant_nulls_are_passed_in_positions_six_and_eight(self):
+        pythoncom, _ = self.com_types()
+        model, manager = self.model_and_manager([2, 3])
+        self.assertTrue(fully_define_or_fail(model, manager)["fully_defined"])
+        args = manager.FullyDefineSketch.call_args.args
+        self.assertEqual(len(args), 10)
+        for index in (5, 7):
+            self.assertEqual(args[index].varianttype, pythoncom.VT_DISPATCH)
+            self.assertIsNone(args[index].value)
+        self.assertEqual((args[:5], args[6], args[8:]), ((True, True, 3, True, 1), 1, (1, 1)))
+        self.assertEqual(manager.FullyDefineSketch.call_count, 1)
+
+    def test_successful_api_return_does_not_override_underdefined_status(self):
+        self.com_types()
+        model, manager = self.model_and_manager([2, 2])
+        with self.assertRaisesRegex(RuntimeError, "remains under-defined"):
+            fully_define_or_fail(model, manager)
+        self.assertEqual(manager.FullyDefineSketch.call_count, 1)
+
+    def test_api_exception_is_not_retried_and_selection_is_cleared(self):
+        self.com_types()
+        model, manager = self.model_and_manager([2])
+        manager.FullyDefineSketch.side_effect = OSError("type mismatch")
+        with self.assertRaisesRegex(OSError, "type mismatch"):
+            fully_define_or_fail(model, manager)
+        self.assertEqual(manager.FullyDefineSketch.call_count, 1)
+        self.assertEqual(model.ClearSelection2.call_count, 2)
+
+    def test_already_defined_sketch_does_not_call_auto_definition(self):
+        model, manager = self.model_and_manager([3])
+        self.assertTrue(fully_define_or_fail(model, manager)["fully_defined"])
+        manager.FullyDefineSketch.assert_not_called()
+
+    def test_non_strict_does_not_invoke_auto_definition(self):
+        model, manager = self.model_and_manager([2])
+        self.assertFalse(fully_define_or_fail(model, manager, strict=False)["fully_defined"])
+        manager.FullyDefineSketch.assert_not_called()
+
+    def test_invalid_status_still_fails(self):
+        model, manager = self.model_and_manager([4])
+        with self.assertRaisesRegex(RuntimeError, "over_defined"):
+            fully_define_or_fail(model, manager)
+        manager.FullyDefineSketch.assert_not_called()
+
+    def test_off_origin_circle_coordinates_are_checked_with_sign(self):
+        for x, y in ((20, 0), (-20, 0), (20, 12)):
+            with self.subTest(x=x, y=y):
+                center = type("Point", (), {"X": x / 1000, "Y": y / 1000})()
+                circle = type("Circle", (), {"GetCenterPoint2": center, "GetRadius": 0.004})()
+                result = verify_circle_geometry(circle, {"cx_mm": x, "cy_mm": y, "radius_mm": 4})
+                self.assertEqual((result["cx_mm"], result["cy_mm"]), (x, y))
+
+    def test_solver_movement_radius_change_and_nan_are_rejected(self):
+        for x, y, radius in ((0, 0, .004), (.02, .012, .005), (float("nan"), .012, .004)):
+            center = type("Point", (), {"X": x, "Y": y})()
+            circle = type("Circle", (), {"GetCenterPoint2": center, "GetRadius": radius})()
+            with self.subTest(x=x, radius=radius), self.assertRaisesRegex(RuntimeError, "refusing to save"):
+                verify_circle_geometry(circle, {"cx_mm": 20, "cy_mm": 12, "radius_mm": 4})
 
 
 if __name__ == "__main__":

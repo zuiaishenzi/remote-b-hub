@@ -11,6 +11,7 @@ import time
 import traceback
 
 from desktop_config import load_config, apply_environment, redact
+from desktop_version import runtime_info
 
 CAD_OPERATIONS = {"solidworks_status", "create_blank_part", "create_box", "sw_recipe"}
 
@@ -115,6 +116,8 @@ def run_worker(directory):
         # Imports require configuration environment; keep them inside this function.
         import agent
         from diagnostic_agent import execute
+        version = runtime_info()
+        log("执行器版本: " + json.dumps(version, ensure_ascii=False))
         log("代理启动；等待 NAS 任务。SOLIDWORKS 将按需启动。")
         while not stop_file.exists():
             # An undelivered result is retried before claiming any more CAD jobs.
@@ -169,6 +172,7 @@ def run_worker(directory):
                     result = status if job["operation"] == "solidworks_status" else execute(job["operation"], job["params"])
                     stream.flush()
                 result["agent_log_tail"] = history[-20:]
+                result["executor"] = version
                 answer = {"ok": True, "value": result}
                 progress("completed", "任务执行成功，准备回传结果")
             except Exception as exc:
@@ -176,7 +180,8 @@ def run_worker(directory):
                 log(trace)
                 answer = {"ok": False, "error": redact(f"{type(exc).__name__}: {exc}", config["token"])[:900],
                           "diagnostics": {"stage": current_stage, "traceback": trace[-5000:],
-                                          "operation": job["operation"], "log_tail": history[-20:]}}
+                                          "operation": job["operation"], "log_tail": history[-20:],
+                                          "executor": version}}
             write_json(outbox, {"job_id": job_id, "answer": answer})
             # Even if Stop was clicked during CAD, send the result before exiting.
             try:

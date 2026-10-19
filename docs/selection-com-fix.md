@@ -139,9 +139,9 @@ SOLIDWORKS 官方 AddDimension2 文档要求按需使用
 py -3 -m unittest discover -s tests -p test_sw_constraints.py -v
 ```
 
-21 项 mock 回归测试通过：包括属性/方法两种 GetLength、可调用 COM 返回对象、
+29 项本地回归测试通过：包括属性/方法两种 GetLength、可调用 COM 返回对象、
 Select2 跳过管理器、Select4 回退、选择失败不创建尺寸、圆直径尺寸入口，
-以及尺寸输入选项在成功、失败后恢复，关闭失败时禁止继续建模。
+以及尺寸输入选项在成功、失败后恢复，关闭失败时禁止继续建模、全定义对象参数的真实 VARIANT 类型和圆心解算后核验。
 这些测试不需要安装 SOLIDWORKS，不能代替上述实机验证。
 
 ## 参考

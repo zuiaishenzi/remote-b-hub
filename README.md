@@ -1,5 +1,9 @@
 # Remote B Hub
 
+偏离原点的圆在 `FullyDefineSketch` 报“类型不匹配”时，参见
+[基准参数 COM 修复、执行器版本识别与偏心圆回归](docs/fully-define-com-fix.md)。
+修复需更新 B 实际运行的 EXE；源码拉取不会热更新 EXE。
+
 Windows B 桌面版：使用 `RemoteBHub.exe` 配置 Token、模板和输出目录，检查/启动
 SOLIDWORKS 与任务代理，查看日志，并支持登录驻留、代理自动重启及 CAD 任务按需启动 SW。
 详见 [桌面启动器使用与自动启动边界](docs/desktop-launcher.md)。本地构建双击 `build-desktop.bat`。

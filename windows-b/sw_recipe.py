@@ -9,7 +9,7 @@ from pathlib import Path
 from sw_schema import validate_recipe
 from solidworks_box import com_read
 from sw_constraints import (add_explicit_dimensions, fully_define_or_fail,
-                            suppress_dimension_input, STATUS)
+                            suppress_dimension_input, verify_circle_geometry, STATUS)
 
 OUTPUT_DIR = Path(os.environ.get("REMOTE_B_OUTPUT_DIR", r"D:\codex\output"))
 PART_TEMPLATE = Path(os.environ.get(
@@ -127,10 +127,15 @@ def _build_part(sw, recipe, path):
                 "use allow_underdefined=true only for legacy approximations")
         print(f"[SW] step {index}: check/complete sketch constraints", flush=True)
         sketch_status = fully_define_or_fail(model, sketch_mgr, strict=strict)
+        profile_geometry = None
+        if op["profile"]["type"] == "circle":
+            print(f"[SW] step {index}: verify solved circle center/radius in sketch coordinates", flush=True)
+            profile_geometry = verify_circle_geometry(created_geometry, op["profile"])
         sketch_mgr.InsertSketch(True)
         sketch = selected_sketch(model, previous)
         constraints.append({"step": index, "sketch": str(com_read(sketch, "Name")),
-                            **sketch_status, "driving_dimensions": dimensions})
+                            **sketch_status, "driving_dimensions": dimensions,
+                            "profile_geometry": profile_geometry})
         model.ClearSelection2(True)
         if not sketch.Select2(False, 0):
             raise RuntimeError(f"Cannot select sketch for step {index}")
