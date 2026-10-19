@@ -368,3 +368,18 @@ bash scripts/install-debian12.sh
 2. Windows B 不要覆盖已在本机修复的 `agent.py`，停止原来的 `box_agent.py`，改运行 `py -3 .\windows-b\sw_agent.py`。运行时依旧需要 `REMOTE_B_SERVER_URL`、`REMOTE_B_AGENT_TOKEN`。不要同时运行两个轮询代理。
 3. Windows A 更新 `windows-a/mcp_bridge.py`，在已配置 A 端环境变量的 PowerShell 中重启 Codex，确认 `/mcp` 显示八个工具。
 4. 建议先使用圆柱零件方案进行端到端测试，随后测试多次拉伸/切除，**最后再试装配体配合**。每一步均检查文件的实际几何、模型重建和装配配合状态。如果任务返回 error，保留完整 error 和 Job ID。失败后可能留下打开的未保存 SolidWorks 文档，需要手动清理。
+
+
+## 16. 驱动尺寸与草图完全定义（实验性更新）
+
+新增模块 `windows-b/sw_constraints.py`，默认启用严格约束检查。创建圆形草图时调用 `AddDiameterDimension2` 创建可编辑的直径驱动尺寸；矩形尝试用 `AddDimension2` 为边添加宽、高驱动尺寸。创建后优先检查活动草图的 `GetConstrainedStatus`：欠定义时尝试 `FullyDefineSketch`，如果仍不满足完全定义则任务失败，并且**不保存目标文件**。保存前检查 `ForceRebuild3(False)`。结果返回实际草图状态及驱动尺寸名称，不再硬编码 `sketch_dimension_constrained: false`。
+
+**局限与验收要求：** 此代码尚未在 Windows B 的 SolidWorks 2023/pywin32 环境验证。草图约束、自动尺寸和 COM 参数可能需要适配。严格模式的多边形现在会直接拒绝：离散齿形不能伪装成完整驱动设计。若确实要测试旧式欠定义模型，可显式传递 `"allow_underdefined": true`，最终返回每张草图的真实状态，并在报告中清楚标注；**不建议用于工程设计交付**。装配体会尝试读取组件约束状态并返回，但机构运动自由度、配合正确性仍需人工/后续系统验证。
+
+首先完成一个直径 30 mm、高度 60 mm 的新圆柱测试，**使用全新文件名** `Cylinder_Parametric_001`。请求格式与旧版 `computer_b_sw_recipe` 一样，新增的 `allow_underdefined` 默认是 false。成功后在 SolidWorks 逐项核对：直径是否为驱动尺寸、圆心是否受约束、草图是否完全定义、拉伸深度是否正确、特征树是否无错误。原有 `Cylinder_Test_001` 不受影响。
+
+### 发布顺序
+
+NAS：在 `/opt/remote-b-hub-source` 更新源码后，同步部署 `server.py` 和 `sw_schema.py` 至 `/opt/remote-b-hub` 并重启服务。Windows B：`git pull` 后检查 `sw_constraints.py`、`sw_recipe.py`、`sw_schema.py` 的 Python 语法；停止旧代理，重新运行 `py -3 .\\windows-b\\sw_agent.py`。Windows A：通常不需要更改 MCP 工具入口，但需重启 Codex 会话以加载文档中的新说明。
+
+**目前尚未增加“直接改写已有 SLDPRT 的参数”功能**。需要在约束及尺寸命名的实机验证通过后，以生成新版本、不覆盖原始文件的方式实现。

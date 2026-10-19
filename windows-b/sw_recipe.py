@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from sw_schema import validate_recipe
 from solidworks_box import com_read
+from sw_constraints import add_explicit_dimensions, fully_define_or_fail, STATUS
 
 OUTPUT_DIR = Path(os.environ.get("REMOTE_B_OUTPUT_DIR", r"D:\codex\output"))
 PART_TEMPLATE = Path(os.environ.get(
@@ -51,9 +52,9 @@ def draw_profile(sketch_manager, profile):
     if typ == "rectangle":
         cx, cy = profile["cx_mm"] / 1000, profile["cy_mm"] / 1000
         half_x, half_y = profile["width_mm"] / 2000, profile["height_mm"] / 2000
-        sketch_manager.CreateCenterRectangle(cx, cy, 0.0, cx + half_x, cy + half_y, 0.0)
+        return sketch_manager.CreateCenterRectangle(cx, cy, 0.0, cx + half_x, cy + half_y, 0.0)
     elif typ == "circle":
-        sketch_manager.CreateCircleByRadius(
+        return sketch_manager.CreateCircleByRadius(
             profile["cx_mm"] / 1000, profile["cy_mm"] / 1000,
             0.0, profile["radius_mm"] / 1000)
     else:
@@ -95,6 +96,8 @@ def build_part(sw, recipe, path):
     if model is None:
         raise RuntimeError("NewDocument(part) returned None")
     features = []
+    strict = not recipe.get("allow_underdefined", False)
+    constraints = []
     for index, op in enumerate(recipe["operations"], 1):
         model.ClearSelection2(True)
         plane = plane_feature(model, op["plane"])
@@ -103,9 +106,20 @@ def build_part(sw, recipe, path):
         previous = {str(com_read(f, "Name")) for f in all_features(model, "ProfileFeature")}
         sketch_mgr = model.SketchManager
         sketch_mgr.InsertSketch(True)
-        draw_profile(sketch_mgr, op["profile"])
+        created_geometry = draw_profile(sketch_mgr, op["profile"])
+        dimensions = []
+        if op["profile"]["type"] != "polygon":
+            dimensions = add_explicit_dimensions(
+                model, sketch_mgr, op["profile"], created_geometry)
+        elif strict:
+            raise RuntimeError(
+                "Polygon requires explicit engineering dimensions; "
+                "use allow_underdefined=true only for legacy approximations")
+        sketch_status = fully_define_or_fail(model, sketch_mgr, strict=strict)
         sketch_mgr.InsertSketch(True)
         sketch = selected_sketch(model, previous)
+        constraints.append({"step": index, "sketch": str(com_read(sketch, "Name")),
+                            **sketch_status, "driving_dimensions": dimensions})
         model.ClearSelection2(True)
         if not sketch.Select2(False, 0):
             raise RuntimeError(f"Cannot select sketch for step {index}")
@@ -113,10 +127,13 @@ def build_part(sw, recipe, path):
         if created is None:
             raise RuntimeError(f"Extrusion/cut failed at step {index}")
         features.append({"step": index, "op": op["op"], "feature": str(com_read(created, "Name"))})
-    model.ForceRebuild3(False)
+    if not model.ForceRebuild3(False):
+        raise RuntimeError("SolidWorks part rebuild failed; output not saved")
     size = save_checked(model, path)
     return {"saved": str(path), "bytes": size, "doc_type": "part",
-            "features": features, "sketch_dimension_constrained": False}
+            "features": features, "sketches": constraints,
+            "all_sketches_fully_defined": all(x["fully_defined"] for x in constraints),
+            "rebuild_ok": True}
 
 def select_mate_entity(model, comp, selector, part_doc, title, append):
     if "plane" in selector:
@@ -201,11 +218,23 @@ def build_assembly(sw, recipe, path):
             raise RuntimeError(f"Mate {index} ({mate['type']}) failed: {exc}") from exc
         finally:
             model.ClearSelection2(True)
-    model.ForceRebuild3(False)
+    if not model.ForceRebuild3(False):
+        raise RuntimeError("SolidWorks assembly rebuild failed; output not saved")
+    states = []
+    for item in recipe["components"]:
+        value = com_read(components[item["id"]], "GetConstrainedStatus")
+        if type(value) is not int or value not in STATUS:
+            raise RuntimeError(f"Unknown constraint status for {item['id']}: {value!r}")
+        if value not in (2, 3):
+            raise RuntimeError(f"Component {item['id']} has invalid status: {STATUS[value]}")
+        states.append({"id": item["id"], "status_code": value,
+                       "status": STATUS[value], "fully_constrained": value == 3})
     size = save_checked(model, path)
     return {"saved": str(path), "bytes": size, "doc_type": "assembly",
             "components": summary, "mates": created_mates,
-            "mate_geometry_verified": False}
+            "component_constraint_states": states,
+            "expected_motion_requires_manual_verification": True,
+            "mate_geometry_verified": False, "rebuild_ok": True}
 
 def execute_recipe(recipe):
     validate_recipe(recipe)

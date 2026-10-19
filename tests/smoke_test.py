@@ -66,4 +66,13 @@ with tempfile.TemporaryDirectory() as directory:
     response = client.post('/api/jobs', headers=ah,
         json={'operation': 'sw_recipe', 'params': {'recipe': assembly}})
     assert response.status_code == 200, response.text
-    print('PASS: auth, queue, allowlist, box and SW recipe validation')
+    # Strict sketch definition defaults on, with explicit opt-out for legacy tests.
+    good = dict(rectangle, allow_underdefined=False)
+    response = client.post('/api/jobs', headers=ah,
+        json={'operation':'sw_recipe', 'params':{'recipe':good}})
+    assert response.status_code == 200, response.text
+    bad = dict(rectangle, allow_underdefined='no')
+    response = client.post('/api/jobs', headers=ah,
+        json={'operation':'sw_recipe', 'params':{'recipe':bad}})
+    assert response.status_code == 400, response.text
+    print('PASS: auth, queue, allowlist, box and strict sketch definition validation')

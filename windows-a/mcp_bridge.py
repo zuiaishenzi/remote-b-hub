@@ -77,7 +77,7 @@ def computer_b_sw_recipe(recipe: dict) -> dict:
     concentric, parallel, perpendicular, distance, angle by explicit reference plane
     or named entity. Coordinates are millimeters, angles degrees. No arbitrary COM,
     macros or Python. Never overwrites files. Returns job_id to poll computer_b_job.
-    Assembly mates are experimental and must be checked in SolidWorks.
+    Sketches default to strict fully-defined mode with explicit driving dimensions.\n    Legacy allow_underdefined=true bypasses strict enforcement (not recommended).\n    Assembly mates are experimental and must be checked in SolidWorks.
     """
     return request('POST', '/api/jobs', {
         'operation': 'sw_recipe', 'params': {'recipe': recipe}

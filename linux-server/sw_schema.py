@@ -32,7 +32,9 @@ def validate_recipe(recipe):
     name(recipe["name"])
     kind = recipe["doc_type"]
     if kind == "part":
-        obj(recipe, {"doc_type", "name", "operations"}, {"doc_type", "name", "operations"})
+        obj(recipe, {"doc_type", "name", "operations", "allow_underdefined"}, {"doc_type", "name", "operations"})
+        if "allow_underdefined" in recipe and type(recipe["allow_underdefined"]) is not bool:
+            raise ValueError("allow_underdefined must be a boolean")
         ops = recipe["operations"]
         if type(ops) is not list or not 1 <= len(ops) <= 12:
             raise ValueError("Part must have 1-12 operations")
