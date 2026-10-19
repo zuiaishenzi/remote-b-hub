@@ -5,11 +5,12 @@ No SOLIDWORKS installation or COM server required.
 """
 import sys
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "windows-b"))
-from sw_constraints import add_explicit_dimensions, create_select_data, select_segment
+from sw_constraints import (add_explicit_dimensions, create_select_data, select_segment,
+                            suppress_dimension_input, SW_INPUT_DIM_VAL_ON_CREATE)
 from solidworks_box import com_read
 
 
@@ -225,6 +226,68 @@ class ConstraintLengthRegressionTests(unittest.TestCase):
         segment = PropertyLengthSegment(0.06)
         with self.assertRaises(TypeError):
             segment.Select4(False, None)
+
+
+class DimensionDialogRegressionTests(unittest.TestCase):
+    def application(self, original=True):
+        sw = Mock()
+        sw.state = original
+        sw.GetUserPreferenceToggle.side_effect = lambda option: sw.state
+        def set_value(option, value):
+            self.assertEqual(option, SW_INPUT_DIM_VAL_ON_CREATE)
+            sw.state = value
+            return True
+        sw.SetUserPreferenceToggle.side_effect = set_value
+        return sw
+
+    def test_disable_then_restore_original_true_or_false(self):
+        for original in (True, False):
+            with self.subTest(original=original):
+                sw = self.application(original)
+                with suppress_dimension_input(sw):
+                    self.assertIs(sw.state, False)
+                self.assertIs(sw.state, original)
+
+    def test_restore_after_com_failure(self):
+        sw = self.application()
+        with self.assertRaisesRegex(OSError, "dimension failed"):
+            with suppress_dimension_input(sw):
+                raise OSError("dimension failed")
+        self.assertIs(sw.state, True)
+
+    def test_do_not_enter_body_if_disable_was_ignored(self):
+        sw = self.application()
+        sw.SetUserPreferenceToggle.side_effect = None
+        body = Mock()
+        with self.assertRaisesRegex(RuntimeError, "Cannot disable"):
+            with suppress_dimension_input(sw):
+                body()
+        body.assert_not_called()
+
+    def test_failed_restore_is_reported(self):
+        sw = self.application()
+        sw.SetUserPreferenceToggle.side_effect = lambda option, value: setattr(sw, "state", False)
+        with self.assertRaisesRegex(RuntimeError, "Unable to restore"):
+            with suppress_dimension_input(sw):
+                self.assertIs(sw.state, False)
+
+    def test_production_part_build_is_guarded(self):
+        from sw_recipe import build_part
+        sw = self.application()
+        def build(app, recipe, path):
+            self.assertIs(app.state, False)
+            return {"rebuild_ok": True}
+        with patch("sw_recipe._build_part", side_effect=build):
+            self.assertEqual(build_part(sw, {}, None), {"rebuild_ok": True})
+        self.assertIs(sw.state, True)
+
+    def test_production_failure_also_restores_setting(self):
+        from sw_recipe import build_part
+        sw = self.application()
+        with patch("sw_recipe._build_part", side_effect=OSError("build failed")):
+            with self.assertRaisesRegex(OSError, "build failed"):
+                build_part(sw, {}, None)
+        self.assertIs(sw.state, True)
 
 
 if __name__ == "__main__":

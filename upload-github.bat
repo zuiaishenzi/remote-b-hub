@@ -20,7 +20,7 @@ if errorlevel 1 goto failed
 
 echo.
 echo [1/4] Checking Python syntax and COM regression tests...
-py -3 -m py_compile windows-b\solidworks_box.py windows-b\sw_constraints.py windows-b\probe_selection_manager.py windows-b\probe_parametric_part.py
+py -3 -m py_compile windows-b\solidworks_box.py windows-b\sw_constraints.py windows-b\sw_recipe.py windows-b\probe_selection_manager.py windows-b\probe_parametric_part.py
 if errorlevel 1 goto failed
 py -3 -m unittest discover -s tests -p test_sw_constraints.py -v
 if errorlevel 1 goto failed

@@ -8,7 +8,8 @@ import os
 from pathlib import Path
 from sw_schema import validate_recipe
 from solidworks_box import com_read
-from sw_constraints import add_explicit_dimensions, fully_define_or_fail, STATUS
+from sw_constraints import (add_explicit_dimensions, fully_define_or_fail,
+                            suppress_dimension_input, STATUS)
 
 OUTPUT_DIR = Path(os.environ.get("REMOTE_B_OUTPUT_DIR", r"D:\codex\output"))
 PART_TEMPLATE = Path(os.environ.get(
@@ -90,6 +91,13 @@ def save_checked(model, path):
     return path.stat().st_size
 
 def build_part(sw, recipe, path):
+    # Covers explicit dimensions AND FullyDefineSketch; also covers direct
+    # build_part callers. Restore the setting on success and on COM exceptions.
+    with suppress_dimension_input(sw):
+        return _build_part(sw, recipe, path)
+
+
+def _build_part(sw, recipe, path):
     if not PART_TEMPLATE.is_file():
         raise FileNotFoundError(f"Part template missing: {PART_TEMPLATE}")
     model = sw.NewDocument(str(PART_TEMPLATE), 0, 0.0, 0.0)
@@ -99,6 +107,7 @@ def build_part(sw, recipe, path):
     strict = not recipe.get("allow_underdefined", False)
     constraints = []
     for index, op in enumerate(recipe["operations"], 1):
+        print(f"[SW] step {index}: create {op['profile']['type']} sketch", flush=True)
         model.ClearSelection2(True)
         plane = plane_feature(model, op["plane"])
         if not plane.Select2(False, 0):
@@ -109,12 +118,14 @@ def build_part(sw, recipe, path):
         created_geometry = draw_profile(sketch_mgr, op["profile"])
         dimensions = []
         if op["profile"]["type"] != "polygon":
+            print(f"[SW] step {index}: create driving dimensions (input dialog disabled)", flush=True)
             dimensions = add_explicit_dimensions(
                 model, sketch_mgr, op["profile"], created_geometry)
         elif strict:
             raise RuntimeError(
                 "Polygon requires explicit engineering dimensions; "
                 "use allow_underdefined=true only for legacy approximations")
+        print(f"[SW] step {index}: check/complete sketch constraints", flush=True)
         sketch_status = fully_define_or_fail(model, sketch_mgr, strict=strict)
         sketch_mgr.InsertSketch(True)
         sketch = selected_sketch(model, previous)
@@ -123,12 +134,15 @@ def build_part(sw, recipe, path):
         model.ClearSelection2(True)
         if not sketch.Select2(False, 0):
             raise RuntimeError(f"Cannot select sketch for step {index}")
+        print(f"[SW] step {index}: {op['op']}", flush=True)
         created = extrude(model, op)
         if created is None:
             raise RuntimeError(f"Extrusion/cut failed at step {index}")
         features.append({"step": index, "op": op["op"], "feature": str(com_read(created, "Name"))})
+    print("[SW] rebuild part", flush=True)
     if not model.ForceRebuild3(False):
         raise RuntimeError("SolidWorks part rebuild failed; output not saved")
+    print(f"[SW] save new part: {path}", flush=True)
     size = save_checked(model, path)
     return {"saved": str(path), "bytes": size, "doc_type": "part",
             "features": features, "sketches": constraints,

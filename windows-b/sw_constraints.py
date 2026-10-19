@@ -2,7 +2,30 @@
 
 SolidWorks 2023 / pywin32 COM: not yet validated on the target workstation.
 """
+from contextlib import contextmanager
 from solidworks_box import com_read
+
+# swUserPreferenceToggle_e.swInputDimValOnCreate (late-bound COM constant).
+SW_INPUT_DIM_VAL_ON_CREATE = 10
+
+
+@contextmanager
+def suppress_dimension_input(sw):
+    """Disable the modal Modify dialog during automation, then restore the user setting.
+
+    SOLIDWORKS AddDimension2 / AddDiameterDimension2 can block inside the COM
+    call while this option is enabled. Verify the option before creating CAD.
+    """
+    original = bool(sw.GetUserPreferenceToggle(SW_INPUT_DIM_VAL_ON_CREATE))
+    try:
+        sw.SetUserPreferenceToggle(SW_INPUT_DIM_VAL_ON_CREATE, False)
+        if sw.GetUserPreferenceToggle(SW_INPUT_DIM_VAL_ON_CREATE):
+            raise RuntimeError("Cannot disable swInputDimValOnCreate; refusing interactive dimensioning")
+        yield
+    finally:
+        sw.SetUserPreferenceToggle(SW_INPUT_DIM_VAL_ON_CREATE, original)
+        if bool(sw.GetUserPreferenceToggle(SW_INPUT_DIM_VAL_ON_CREATE)) != original:
+            raise RuntimeError("Unable to restore swInputDimValOnCreate to its original value")
 
 SW_FULLY_DEFINED = 3
 STATUS = {1: "unknown", 2: "under_defined", 3: "fully_defined",

@@ -116,14 +116,32 @@ py -3 .\windows-b\probe_parametric_part.py --profile circle
 的输出，先修复对应 COM/约束阶段，不要关闭严格模式反复重试。
 两个零件通过后再重启原代理，验证经 NAS 的同规格任务链路；不要同时运行多个代理。
 
+## 标注时停在“修改”确认框
+
+2026-10-19 用户实机反馈：矩形和圆柱均在标注时等待，手动点击绿色勾后继续生成。
+截图中的“修改”尺寸窗口表明，添加尺寸进入了交互输入流程；此时不能算无人值守测试通过。
+
+SOLIDWORKS 官方 AddDimension2 文档要求按需使用
+`ISldWorks.SetUserPreferenceToggle(swInputDimValOnCreate, False)` 抑制该窗口。
+生产执行器现在在整个零件建模期间临时关闭此选项，并读回验证；成功或异常退出时
+恢复运行前的值。因此无需用户永久修改自己的 SOLIDWORKS 设置，严格约束要求也不变。
+新增 `[SW] step ...` 日志，分别标记草图、驱动尺寸、约束检查、拉伸、重建和保存。
+
+从 GitHub 更新后重新运行上面的矩形、圆柱测试，不手动点击尺寸确认；
+验收要求是自动返回 `PARAMETRIC TEST PASSED` 和完整 RESULT。
+如仍停住，保留最后一条 `[SW]` 输出及弹窗截图，继续定位具体阶段。
+
+参考：[官方 AddDimension2 说明](https://help.solidworks.com/2016/english/api/sldworksapi/solidworks.interop.sldworks~solidworks.interop.sldworks.imodeldoc2~adddimension2.html)。
+
 ## 本地验证
 
 ```powershell
 py -3 -m unittest discover -s tests -p test_sw_constraints.py -v
 ```
 
-15 项 mock 回归测试通过：包括属性/方法两种 GetLength、可调用 COM 返回对象、
-Select2 跳过管理器、Select4 回退、选择失败不创建尺寸、圆直径尺寸入口。
+21 项 mock 回归测试通过：包括属性/方法两种 GetLength、可调用 COM 返回对象、
+Select2 跳过管理器、Select4 回退、选择失败不创建尺寸、圆直径尺寸入口，
+以及尺寸输入选项在成功、失败后恢复，关闭失败时禁止继续建模。
 这些测试不需要安装 SOLIDWORKS，不能代替上述实机验证。
 
 ## 参考
