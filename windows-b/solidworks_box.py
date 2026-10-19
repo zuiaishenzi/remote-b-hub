@@ -5,14 +5,11 @@ from pathlib import Path
 
 def com_read(obj, member):
     v = getattr(obj, member)
-    if not callable(v):
+    # CDispatch implements __call__ for DISPID_VALUE. An interface returned by
+    # a property is therefore callable too, but must NOT be invoked again.
+    if hasattr(v, "_oleobj_") or not callable(v):
         return v
-    try:
-        return v()
-    except Exception as e:
-        if getattr(e, "hresult", None) == -2147352573 and hasattr(v, "_oleobj_"):
-            return v
-        raise
+    return v()
 
 def find_feature(model, type_name):
     features = model.FeatureManager.GetFeatures(False)

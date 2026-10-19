@@ -34,33 +34,44 @@ def dimension_info(display_dimension, expected_mm, key):
             "driving_dimension_created": True}
 
 def create_select_data(model):
-    """Prefer the strongly typed ISelectionManager property when pywin32 dispatches
-    SelectionManager as a less-specific COM object. Try the legacy property if
-    the strongly typed one is unavailable.
+    """Use the Automation property, without invoking a returned COM interface.
+
+    In late binding, CreateSelectData may already be evaluated by getattr.
+    Calling that CDispatch again invokes its default member, NOT the factory.
+    ISelectionManager is not used: reading it fails on the target workstation.
     """
-    errors = []
-    for property_name in ("ISelectionManager", "SelectionManager"):
-        try:
-            manager = getattr(model, property_name)
-            if manager is None:
-                raise RuntimeError("Selection manager returned None")
-            member = getattr(manager, "CreateSelectData")
-            select_data = member() if callable(member) else member
-            if select_data is None:
-                raise RuntimeError("CreateSelectData returned None")
-            select_data.Mark = 0
-            return select_data
-        except Exception as exc:
-            errors.append(f"{property_name}: {type(exc).__name__}: {exc}")
-    raise RuntimeError("Unable to create ISelectData; " + " | ".join(errors))
+    manager = com_read(model, "SelectionManager")
+    if manager is None:
+        raise RuntimeError("SelectionManager returned None")
+    select_data = com_read(manager, "CreateSelectData")
+    if select_data is None:
+        raise RuntimeError("CreateSelectData returned None")
+    select_data.Mark = 0
+    return select_data
 
 
 def select_segment(model, segment):
-    """Select a sketch segment using an ISelectData COM interface."""
+    """Select exactly one segment at mark zero; return the successful API path.
+
+    Select2 is obsolete but avoids the ISelectData argument that is problematic
+    with late-bound SW 2023. Keep Select4 as a fallback for other bindings.
+    """
+    errors = []
+    for method in ("Select2", "Select4"):
+        model.ClearSelection2(True)
+        try:
+            if method == "Select2":
+                selected = segment.Select2(False, 0)
+            else:
+                selected = segment.Select4(False, create_select_data(model))
+            if not selected:
+                raise RuntimeError("returned False")
+            return method
+        except Exception as exc:
+            errors.append(f"{method}: {type(exc).__name__}: {exc}")
     model.ClearSelection2(True)
-    select_data = create_select_data(model)
-    if not segment.Select4(False, select_data):
-        raise RuntimeError("Failed to select a sketch segment for a driving dimension")
+    raise RuntimeError("Failed to select a sketch segment for a driving dimension; "
+                       + " | ".join(errors))
 
 def add_explicit_dimensions(model, sketch_manager, profile, created):
     """Use geometry handles to create meaningful primary dimensions."""
