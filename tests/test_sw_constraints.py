@@ -77,7 +77,11 @@ class MethodLengthSegment:
     def GetLength(self):
         return self.meters
 
-    def Select4(self, append, callout):
+    def Select4(self, append, data):
+        if append is not False or not isinstance(data, MockSelectData):
+            raise TypeError("Select4 requires a real SelectData object")
+        if data.Mark != 0:
+            raise ValueError("Dimensions should use selection mark zero")
         return True
 
 
