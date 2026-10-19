@@ -10,6 +10,10 @@ Git 提交身份需已配置。失败时窗口会保留错误，已有本地提�
 > [COM 选择修复与 Windows B 验证步骤](docs/selection-com-fix.md)。
 > 本地回归测试已通过，目标工作站的实机选择及严格建模仍需分阶段验收。
 
+2026-10-19 Windows B 已实机验证选择管理器和矩形边/圆的 `Select2` 选择。
+下一步运行 `py -3 .\windows-b\probe_parametric_part.py --profile rectangle`，
+通过后再测试 `--profile circle`，详见上述验证文档。测试会创建并按严格检查结果保存全新零件。
+
 > 通过一台 Debian Linux 服务器，将 **电脑 A 上的 Codex** 与 **电脑 B 上的 Windows 应用**连接起来。电脑 B 无需访问 OpenAI，也无需拥有公网 IP。
 
 **当前阶段：MVP（最小可用原型）**。本仓库提供 Linux 任务中转服务、Windows B 任务执行代理、Windows A 的 Codex MCP 桥接程序和安装脚本。第一阶段用于验证远程通信及 SolidWorks COM 调用基础能力，**不是**成熟的通用远程桌面或完整 SolidWorks 自动建模软件。

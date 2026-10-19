@@ -1,6 +1,8 @@
 # SOLIDWORKS 2023 草图选择 COM 修复
 
-基于 `185cb82`；代码与 mock 测试已完成，**尚未在 Windows B / SOLIDWORKS 实机验证**。
+基于 `185cb82`。2026-10-19 用户在 Windows B 实机确认：
+`SelectionManager.CreateSelectData` 返回 `CDispatch` 且 mark=0；四条矩形边和一个圆
+均通过 `Select2` 选中。**选择阶段已实机通过；尺寸、全定义及拉伸保存仍待验证。**
 
 ## 问题定位
 
@@ -81,6 +83,38 @@ py -3 .\windows-b\probe_selection_manager.py --select-test --template 'C:\实际
 必须另外检查驱动尺寸、`all_sketches_fully_defined`、重建及实际文件信息。
 如果在后续尺寸/全定义阶段出错，需保留 traceback；不能当作选择修复未生效，
 也不能当作建模已验收。
+
+## 下一步：严格参数化零件测试
+
+现在可以用 `windows-b/probe_parametric_part.py` 直接调用生产的
+`sw_recipe.execute_recipe`，无需通过 NAS 排队。先暂停 B 的轮询代理，避免其他任务
+同时操作 SOLIDWORKS；保持 SOLIDWORKS 开启，使用同一交互式用户执行。
+
+```powershell
+cd C:\RemoteB\remote-b-hub
+git pull --ff-only
+py -3 .\windows-b\probe_parametric_part.py --profile rectangle
+```
+
+矩形规格为 100 × 60 mm，拉伸 10 mm。脚本每次生成全新文件名，默认保存到
+`REMOTE_B_OUTPUT_DIR`（未设置时为 `D:\codex\output`）；模板使用
+`REMOTE_B_PART_TEMPLATE`。可用 `--template` 和 `--output-dir` 单独覆盖。
+该测试会创建新文档，并在严格约束和重建检查通过后保存新文件。
+
+成功时应出现 `PARAMETRIC TEST PASSED`，RESULT 中有 width=100、height=60
+的尺寸名称、`all_sketches_fully_defined: true`、`rebuild_ok: true` 和实际保存路径及大小。
+需在 SOLIDWORKS 中检查尺寸为驱动尺寸、拉伸深度为 10 mm。
+
+矩形通过后再执行圆柱测试（直径 30 mm、拉伸 60 mm）：
+
+```powershell
+py -3 .\windows-b\probe_parametric_part.py --profile circle
+```
+
+圆柱成功结果应有 diameter=30 的尺寸名称、完全定义和重建成功，并检查拉伸深度。
+这些数值是配方要求，尚不是实机验收结论。任一步报错时保留从 Recipe 到完整 traceback
+的输出，先修复对应 COM/约束阶段，不要关闭严格模式反复重试。
+两个零件通过后再重启原代理，验证经 NAS 的同规格任务链路；不要同时运行多个代理。
 
 ## 本地验证
 
