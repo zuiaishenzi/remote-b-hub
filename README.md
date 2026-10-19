@@ -4,6 +4,8 @@ Windows B 桌面版：使用 `RemoteBHub.exe` 配置 Token、模板和输出目�
 SOLIDWORKS 与任务代理，查看日志，并支持登录驻留、代理自动重启及 CAD 任务按需启动 SW。
 详见 [桌面启动器使用与自动启动边界](docs/desktop-launcher.md)。本地构建双击 `build-desktop.bat`。
 
+首次配置请先阅读 [如何获取和配置 A / B 的 Token](#如何获取和配置-a--b-的-token)。
+
 双击根目录的 `upload-github.bat`，会先检查 Python 语法并运行 COM 回归测试，
 然后提交全部未被 `.gitignore` 排除的改动并推送到 `origin` 的当前分支。
 首次使用需安装 Git for Windows、Python（含 `py` 启动器）并完成 GitHub 登录；
@@ -169,6 +171,65 @@ HUB_DB=/opt/remote-b-hub/jobs.sqlite3
 ```
 
 **不要把 `hub.env`、token、SSH 私钥或真实 CAD 文件提交到 GitHub，也不要把它们贴到聊天中。** 电脑 A/B 运行时需要分别使用自己对应的令牌，令牌本身不能只保存在服务器而不分发给客户端。
+
+### 如何获取和配置 A / B 的 Token
+
+**两枚 Token 均由 NAS 首次安装脚本生成，保存在 NAS 的
+`/etc/remote-b-hub/hub.env` 中。** 它们不是 GitHub Token，也不需要从 OpenAI 获取。
+重复运行安装脚本会保留已有配置，不应为了获取 Token 而重新生成或覆盖文件。
+
+在 **NAS 的 SSH 终端**中分别执行以下只读命令（需要 root 或 sudo 权限）：
+
+```bash
+# 电脑 A 使用：读取 HUB_A_TOKEN
+sudo grep '^HUB_A_TOKEN=' /etc/remote-b-hub/hub.env
+
+# 电脑 B 使用：读取 HUB_B_TOKEN
+sudo grep '^HUB_B_TOKEN=' /etc/remote-b-hub/hub.env
+```
+
+如果已经是 root，可省略 `sudo`。输出为 `变量名=实际值`，**仅复制等号后面的值**，
+不要复制变量名、等号、空格或换行。命令会在当前终端显示真实密钥，不要将输出截图、
+粘贴到聊天、日志或 GitHub。如果提示文件不存在，先完成第 5 节的 NAS 首次部署；
+仓库 `hub.env.example` 中的占位符不能用作真实 Token。
+
+| 获取来源（NAS） | 使用设备 | 填写位置 |
+| --- | --- | --- |
+| `HUB_A_TOKEN` 的值 | 电脑 A | `REMOTE_B_CLIENT_TOKEN` 环境变量，供 MCP 桥接使用 |
+| `HUB_B_TOKEN` 的值 | 电脑 B | EXE 中的 **B Token / HUB_B_TOKEN**；命令行代理使用 `REMOTE_B_AGENT_TOKEN` |
+
+**电脑 A：**在启动 Codex CLI 的同一个 PowerShell 窗口中输入：
+
+```powershell
+$env:REMOTE_B_API_URL = 'https://你的NAS服务入口'
+$aTokenSecure = Read-Host '粘贴 NAS 的 HUB_A_TOKEN 值' -AsSecureString
+$env:REMOTE_B_CLIENT_TOKEN = [System.Net.NetworkCredential]::new('', $aTokenSecure).Password
+Remove-Variable aTokenSecure
+codex
+```
+
+输入时不显示 Token。MCP 桥接需已按第 8 节注册；该配置只对当前窗口及其子进程有效。
+如果 Codex 已在别的窗口运行，需要在这个配置好环境的窗口中重新启动，使桥接进程读取新值。
+
+**电脑 B（推荐 EXE）：**打开 `RemoteBHub.exe`，在 NAS 地址中填写服务入口，
+将 `HUB_B_TOKEN` 的值粘贴到 **B Token / HUB_B_TOKEN**，点击“保存设置”，再“启动代理”。
+Token 会按当前 Windows 用户加密保存在本机；代理显示 `idle` 表示已成功鉴权并轮询 NAS。
+仅 NAS 健康检查成功不能证明 Token 正确。
+
+**电脑 B（仍用命令行代理时）：**在启动代理的同一个 PowerShell 中设置：
+
+```powershell
+$env:REMOTE_B_SERVER_URL = 'https://你的NAS服务入口'
+$bTokenSecure = Read-Host '粘贴 NAS 的 HUB_B_TOKEN 值' -AsSecureString
+$env:REMOTE_B_AGENT_TOKEN = [System.Net.NetworkCredential]::new('', $bTokenSecure).Password
+Remove-Variable bTokenSecure
+py -3 .\windows-b\diagnostic_agent.py
+```
+
+命令行方式还需按第 7 节配置模板和输出目录；不要与 EXE 的代理同时运行。
+出现 `401 Unauthorized` 时，先核对 A/B 是否填反、复制是否完整，以及代理/桥接是否仍在
+使用旧环境值。若主动修改了 NAS 的 Token，需同步更新对应客户端并重启 NAS 服务加载新值；
+**仅查看和复制现有 Token 不需要重启 NAS。**
 
 ## 6. 第二步：自行配置 FRP 与域名 B
 
