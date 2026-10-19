@@ -43,4 +43,27 @@ with tempfile.TemporaryDirectory() as directory:
     for params in invalid_boxes:
         response = client.post('/api/jobs', headers=ah, json={'operation': 'create_box', 'params': params})
         assert response.status_code == 400, response.text
-    print('PASS: auth, queue, agent fetch/result, allowlist, box input bounds')
+    rectangle = {'doc_type': 'part', 'name': 'Test_Part_001', 'operations': [
+        {'op': 'boss_extrude', 'plane': 'front', 'depth_mm': 20, 'profile':
+            {'type': 'rectangle', 'cx_mm': 0, 'cy_mm': 0,
+             'width_mm': 60, 'height_mm': 40}}]}
+    valid = client.post('/api/jobs', headers=ah, json={
+        'operation': 'sw_recipe', 'params': {'recipe': rectangle}})
+    assert valid.status_code == 200, valid.text
+    invalid = [dict(rectangle, name='../unsafe'),
+               dict(rectangle, operations=[dict(rectangle['operations'][0], op='arbitrary_python')]),
+               dict(rectangle, operations=[dict(rectangle['operations'][0], depth_mm=float('inf'))])]
+    for item in invalid:
+        response = client.post('/api/jobs', headers=ah,
+            json={'operation': 'sw_recipe', 'params': {'recipe': item}})
+        assert response.status_code in (400, 422), response.text
+    assembly = {'doc_type': 'assembly', 'name': 'Test_Assembly_001',
+       'components': [
+          {'id':'base','file':'Test_Part_001.SLDPRT','position_mm':[0,0,0]},
+          {'id':'top','file':'Test_Part_002.SLDPRT','position_mm':[0,0,25]}],
+       'mates':[{'type':'coincident','a':{'component':'base','plane':'front'},
+                 'b':{'component':'top','plane':'front'}}]}
+    response = client.post('/api/jobs', headers=ah,
+        json={'operation': 'sw_recipe', 'params': {'recipe': assembly}})
+    assert response.status_code == 200, response.text
+    print('PASS: auth, queue, allowlist, box and SW recipe validation')

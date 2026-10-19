@@ -318,3 +318,53 @@ bash scripts/install-debian12.sh
 
 **仓库：** <https://github.com/zuiaishenzi/remote-b-hub>  
 **协议与部署边界：** 本文描述的是项目设计及已编写的 MVP 功能，最终以实际代码版本及部署验收结果为准。
+
+ 
+## 15. 通用 SolidWorks 建模方案（试验性）
+
+新增 `computer_b_sw_recipe(recipe)`：用结构化 JSON 描述零件或装配体。**不是**任意 Python、VBA、PowerShell 或 COM 方法调用。NAS 与 Windows B 共享严格的 schema 校验规则，并限制文件名、零件数量、草图点数、特征步骤与尺寸。默认不覆盖现有文件；输出在 `D:\codex\output`。
+
+### 零件示例：直径 30 mm、长 60 mm 的圆柱
+
+```json
+{
+  "doc_type": "part",
+  "name": "Cylinder_001",
+  "operations": [
+    {
+      "op": "boss_extrude",
+      "plane": "front",
+      "profile": {"type":"circle", "cx_mm":0, "cy_mm":0, "radius_mm":15},
+      "depth_mm": 60
+    }
+  ]
+}
+```
+
+零件首版支持：`rectangle`、`circle`、`polygon` 草图和 `boss_extrude`、`cut_extrude`。`polygon` 允许最多 512 个顶点，可用在渐开线齿廓**离散近似**，但还不是精确的样条/齿根过渡曲线。所有拉伸基于模板前视/上视/右视基准面；切除相对全局基准面，方向可能要设置 `reverse`。暂不支持特征基准面、完整草图尺寸约束、圆周阵列、参数修改、圆角和倒角。
+
+### 装配体示例：两个已有零件的前视基准面重合
+
+```json
+{
+  "doc_type": "assembly", "name": "Assembly_001",
+  "components": [
+    {"id":"base","file":"Base_001.SLDPRT","position_mm":[0,0,0]},
+    {"id":"link","file":"Link_001.SLDPRT","position_mm":[0,0,20]}
+  ],
+  "mates": [
+    {"type":"coincident",
+     "a":{"component":"base","plane":"front"},
+     "b":{"component":"link","plane":"front"}}
+  ]
+}
+```
+
+装配体支持插入同一输出目录内已有的 `.SLDPRT`；支持显式引用基准面（front/top/right）或指定实体名与类别（PLANE/FACE/AXIS），并尝试创建 `coincident`、`concentric`、`parallel`、`perpendicular`、`distance`、`angle` 配合。距离值用毫米，角度值用度。**这部分 COM 选择/配合调用尚未经过 Windows B 的实机验证，属于试验接口**。不能据文件保存成功判断配合正确或完全约束；必须在 SolidWorks 检查配合特征树、欠定义状态、干涉及自由度。零件文件不能被覆盖，未实现原位修改装配体。
+
+### 上线步骤
+
+1. 确保 NAS、A、B 都拉取最新 GitHub 代码。NAS 需要将 `linux-server/server.py` **和** `linux-server/sw_schema.py` 同时复制到 `/opt/remote-b-hub/`，之后重启 `remote-b-hub` 服务。先用 Python `py_compile` 检查两个文件；**缺少 sw_schema.py 会导致服务启动失败**。
+2. Windows B 不要覆盖已在本机修复的 `agent.py`，停止原来的 `box_agent.py`，改运行 `py -3 .\windows-b\sw_agent.py`。运行时依旧需要 `REMOTE_B_SERVER_URL`、`REMOTE_B_AGENT_TOKEN`。不要同时运行两个轮询代理。
+3. Windows A 更新 `windows-a/mcp_bridge.py`，在已配置 A 端环境变量的 PowerShell 中重启 Codex，确认 `/mcp` 显示八个工具。
+4. 建议先使用圆柱零件方案进行端到端测试，随后测试多次拉伸/切除，**最后再试装配体配合**。每一步均检查文件的实际几何、模型重建和装配配合状态。如果任务返回 error，保留完整 error 和 Job ID。失败后可能留下打开的未保存 SolidWorks 文档，需要手动清理。

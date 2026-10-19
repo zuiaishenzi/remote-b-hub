@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
+from sw_schema import validate_recipe
 from pydantic import BaseModel, ConfigDict, Field
 
 DB_PATH = Path(os.environ.get('HUB_DB', './jobs.sqlite3'))
@@ -22,7 +23,7 @@ B_TOKEN = os.environ.get('HUB_B_TOKEN', '')
 if len(A_TOKEN) < 32 or len(B_TOKEN) < 32 or secrets.compare_digest(A_TOKEN, B_TOKEN):
     raise RuntimeError('Set independent HUB_A_TOKEN and HUB_B_TOKEN (minimum 32 characters each)')
 
-VALID_OPERATIONS = {'ping', 'system_info', 'solidworks_status', 'create_blank_part', 'create_box'}
+VALID_OPERATIONS = {'ping', 'system_info', 'solidworks_status', 'create_blank_part', 'create_box', 'sw_recipe'}
 
 
 def init_db():
@@ -115,6 +116,15 @@ def submit_job(payload: JobRequest, authorization: str | None = Header(default=N
             value = params[key]
             if type(value) not in (int, float) or not math.isfinite(value) or not 1 <= value <= 500:
                 raise HTTPException(400, f'{key} must be a finite number between 1 and 500 mm')
+    elif payload.operation == 'sw_recipe':
+        if set(payload.params) != {'recipe'}:
+            raise HTTPException(400, 'sw_recipe requires exactly recipe')
+        if len(json.dumps(payload.params, ensure_ascii=False)) > 50000:
+            raise HTTPException(413, 'Recipe too large')
+        try:
+            validate_recipe(payload.params['recipe'])
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     elif payload.params:
         raise HTTPException(400, 'This operation does not accept params')
     job_id = str(uuid.uuid4())

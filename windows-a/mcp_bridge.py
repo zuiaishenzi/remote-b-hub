@@ -70,6 +70,21 @@ def computer_b_create_box(name: str, length_mm: float, width_mm: float, height_m
 
 
 @mcp.tool()
+def computer_b_sw_recipe(recipe: dict) -> dict:
+    """Execute a restricted SolidWorks modeling plan (part or assembly) on PC B.
+    Part operations: boss_extrude, cut_extrude; profiles: rectangle, circle, polygon.
+    Assembly: insert .SLDPRT from configured output directory; mates: coincident,
+    concentric, parallel, perpendicular, distance, angle by explicit reference plane
+    or named entity. Coordinates are millimeters, angles degrees. No arbitrary COM,
+    macros or Python. Never overwrites files. Returns job_id to poll computer_b_job.
+    Assembly mates are experimental and must be checked in SolidWorks.
+    """
+    return request('POST', '/api/jobs', {
+        'operation': 'sw_recipe', 'params': {'recipe': recipe}
+    })
+
+
+@mcp.tool()
 def computer_b_job(job_id: str) -> dict:
     """Retrieve the status and output of an earlier task by job ID. Read-only."""
     return request('GET', '/api/jobs/' + job_id)
