@@ -46,7 +46,9 @@ def computer_b_system_info() -> dict:
 
 @mcp.tool()
 def computer_b_solidworks_status() -> dict:
-    """Check whether SolidWorks is running in the B agent's user session. Returns a job id."""
+    """Check SolidWorks in B's user session. The desktop agent can auto-start SW
+    when enabled in its settings. Returns a job id; poll computer_b_job.
+    """
     return request('POST', '/api/jobs', {'operation': 'solidworks_status'})
 
 

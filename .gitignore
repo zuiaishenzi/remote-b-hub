@@ -10,6 +10,15 @@ hub.env
 __pycache__/
 *.pyc
 .venv/
+.venv-build/
+build/
+dist/
+*.spec
+# Desktop runtime config and diagnostic state must never be uploaded
+config.json
+pending-result.json
+status.json
+stop.request
 venv/
 output/
 *.SLDPRT

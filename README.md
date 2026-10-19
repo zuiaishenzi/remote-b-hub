@@ -1,5 +1,9 @@
 # Remote B Hub
 
+Windows B 桌面版：使用 `RemoteBHub.exe` 配置 Token、模板和输出目录，检查/启动
+SOLIDWORKS 与任务代理，查看日志，并支持登录驻留、代理自动重启及 CAD 任务按需启动 SW。
+详见 [桌面启动器使用与自动启动边界](docs/desktop-launcher.md)。本地构建双击 `build-desktop.bat`。
+
 双击根目录的 `upload-github.bat`，会先检查 Python 语法并运行 COM 回归测试，
 然后提交全部未被 `.gitignore` 排除的改动并推送到 `origin` 的当前分支。
 首次使用需安装 Git for Windows、Python（含 `py` 启动器）并完成 GitHub 登录；
