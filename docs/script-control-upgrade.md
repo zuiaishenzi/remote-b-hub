@@ -124,6 +124,8 @@ DLL 来自本机 SOLIDWORKS 安装，不从网络下载，也不随本项目分�
 CAD 原始 traceback 会保留，截图失败记录在 `diagnostics.screenshot_error`。
 
 **视频：** 本次未实现实时视频，也未配置 RustDesk/WebRTC/FRP 视频通道。
+手动部署步骤见 [绿联 NAS 自建 RustDesk](rustdesk-ugreen-nas.md)，包含 Docker Compose、
+FRP TCP/UDP 映射、客户端公钥与连通性验收。
 如需连续观看，可另行在 A/B 安装并配置双方信任的远程桌面软件与访问认证；
 需要中继/穿透时另外配置其服务。现有 NAS HTTP 端口不自动成为远程桌面或视频通道。
 截图方案不要求额外视频服务或新端口。

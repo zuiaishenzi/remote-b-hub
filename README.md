@@ -6,6 +6,9 @@
 详见 [升级顺序、实际能力及图片/视频手动配置](docs/script-control-upgrade.md)。
 需要同时更新 NAS、A 桥接与 B EXE；新版文件见 [Releases](https://github.com/zuiaishenzi/remote-b-hub/releases/latest)。
 
+实时观看 B 的画面：参见 [绿联 NAS 自建 RustDesk：Docker、FRP 与 A/B 配置](docs/rustdesk-ugreen-nas.md)。
+该方案作为独立远程桌面通道部署；模型看图继续使用项目的鉴权截图工具。
+
 偏离原点的圆在 `FullyDefineSketch` 报“类型不匹配”时，参见
 [基准参数 COM 修复、执行器版本识别与偏心圆回归](docs/fully-define-com-fix.md)。
 修复需更新 B 实际运行的 EXE；源码拉取不会热更新 EXE。
