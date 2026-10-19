@@ -75,4 +75,24 @@ with tempfile.TemporaryDirectory() as directory:
     response = client.post('/api/jobs', headers=ah,
         json={'operation':'sw_recipe', 'params':{'recipe':bad}})
     assert response.status_code == 400, response.text
-    print('PASS: auth, queue, allowlist, box and strict sketch definition validation')
+    # A failed CAD recipe can be revised to a new filename without losing its history.
+    job = valid.json()['job_id']
+    while True:
+        picked = client.get('/agent/next', headers=bh).json()['job']
+        if picked['job_id'] == job:
+            break
+    assert client.post(f'/agent/jobs/{job}/progress', headers=bh,
+        json={'stage':'drawing_sketch','step':1}).status_code == 200
+    assert client.post(f'/agent/jobs/{job}/result', headers=bh,
+        json={'ok':False,'error':'COM operation failed',
+              'diagnostics':{'stage':'drawing_sketch','traceback':'demo traceback'}}).status_code == 200
+    result = client.get('/api/jobs/'+job, headers=ah).json()
+    assert result['progress']['stage'] == 'drawing_sketch'
+    assert result['result']['diagnostics']['stage'] == 'drawing_sketch'
+    revised = dict(rectangle, name='Test_Part_002')
+    newer = client.post(f'/api/jobs/{job}/revise', headers=ah, json={'recipe':revised})
+    assert newer.status_code == 200, newer.text
+    assert newer.json()['job_id'] != job
+    same_name = client.post(f'/api/jobs/{job}/revise', headers=ah, json={'recipe':rectangle})
+    assert same_name.status_code == 400
+    print('PASS: auth, queue, recipe revisions, progress and structured diagnostics')

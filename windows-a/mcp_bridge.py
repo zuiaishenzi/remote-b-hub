@@ -85,6 +85,16 @@ def computer_b_sw_recipe(recipe: dict) -> dict:
 
 
 @mcp.tool()
+def computer_b_revise_recipe(job_id: str, recipe: dict) -> dict:
+    """Revise a completed/failed SolidWorks job using a FULL corrected recipe.
+    Always choose a NEW output name; no overwrite. Returns new job id.
+    Read the parent job's diagnostics and request first. Do not repeat
+    unchanged failures or weaken constraints without user approval.
+    """
+    return request('POST', '/api/jobs/' + job_id + '/revise', {'recipe': recipe})
+
+
+@mcp.tool()
 def computer_b_job(job_id: str) -> dict:
     """Retrieve the status and output of an earlier task by job ID. Read-only."""
     return request('GET', '/api/jobs/' + job_id)

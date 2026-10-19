@@ -383,3 +383,14 @@ bash scripts/install-debian12.sh
 NAS：在 `/opt/remote-b-hub-source` 更新源码后，同步部署 `server.py` 和 `sw_schema.py` 至 `/opt/remote-b-hub` 并重启服务。Windows B：`git pull` 后检查 `sw_constraints.py`、`sw_recipe.py`、`sw_schema.py` 的 Python 语法；停止旧代理，重新运行 `py -3 .\\windows-b\\sw_agent.py`。Windows A：通常不需要更改 MCP 工具入口，但需重启 Codex 会话以加载文档中的新说明。
 
 **目前尚未增加“直接改写已有 SLDPRT 的参数”功能**。需要在约束及尺寸命名的实机验证通过后，以生成新版本、不覆盖原始文件的方式实现。
+
+
+## 17. 失败诊断与安全修订（实验性）
+
+新版任务会保存完整结构化 recipe、最新 progress 及错误 diagnostics。Windows B 可用新入口 `windows-b/diagnostic_agent.py`，代替 `sw_agent.py`（**不要同时运行多个代理**）；失败时回传截断的 Traceback，方便 Codex 判断是 COM 获取实例、草图、尺寸、重建还是保存错误。错误信息可能包含 Windows 路径与零件名称，仅在可信私有服务使用；不要公开完整日志或 Token。
+
+新增 MCP 工具 `computer_b_revise_recipe(job_id, recipe)`：读取失败任务与原始 recipe，修正并提交**完整新配方**，文件名必须与旧版不同。旧任务和旧 CAD 文件不被覆盖。最大建议自动尝试 3 次；遇到相同错误且配方未发生有效变化、SolidWorks 未启动、许可证/文件权限问题、拟关闭严格约束或改变机械设计意图时停止并要求用户处理。没有任意宏/Python/PowerShell 执行接口。
+
+升级 NAS 必须同时复制 `linux-server/server.py` 与 `linux-server/sw_schema.py` 到 `/opt/remote-b-hub`；服务重启会把处于 running 的旧任务标记 interrupted。Windows B 更新后执行 `py -3 .\\windows-b\\diagnostic_agent.py`；Windows A 更新后重启 Codex，应有 9 个 pc-b MCP 工具。
+
+**已知限制：** 新实现能让 Codex基于错误详情创建修订版本，但不是保证所有 COM 异常能够自动修好，更不等于能直接修改已保存零件内部特征。它依然缺少成熟的齿轮渐开线及圆周阵列、装配齿轮运动配合、可靠细粒度阶段日志、特征检查与模型几何验证。当前原脚本的 float-not-callable、COM 参数不匹配需要后续实机修复，不应靠允许欠定义来绕过。
