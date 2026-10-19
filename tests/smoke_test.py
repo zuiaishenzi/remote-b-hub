@@ -27,4 +27,20 @@ with tempfile.TemporaryDirectory() as directory:
     assert client.post('/api/jobs', headers=ah,
              json={'operation':'powershell', 'params': {'command':'whoami'}}).status_code == 400
     assert client.post('/api/jobs', headers=bh, json={'operation':'ping'}).status_code == 401
-    print('PASS: auth, queue, agent fetch/result, allowlist')
+    # New safe SolidWorks create_box operation only accepts bounded, finite dimensions.
+    ok_box = {'operation': 'create_box', 'params': {'name': 'Test_Box_001',
+              'length_mm': 60, 'width_mm': 40.0, 'height_mm': 20}}
+    response = client.post('/api/jobs', headers=ah, json=ok_box)
+    assert response.status_code == 200, response.text
+    invalid_boxes = [
+        {'name': '../bad', 'length_mm': 60, 'width_mm': 40, 'height_mm': 20},
+        {'name': 'Test', 'length_mm': 0, 'width_mm': 40, 'height_mm': 20},
+        {'name': 'Test', 'length_mm': 60, 'width_mm': 501, 'height_mm': 20},
+        {'name': 'Test', 'length_mm': True, 'width_mm': 40, 'height_mm': 20},
+        {'name': 'Test', 'length_mm': '60', 'width_mm': 40, 'height_mm': 20},
+        {'name': 'Test', 'length_mm': 60, 'width_mm': 40, 'height_mm': 20, 'command': 'whoami'},
+    ]
+    for params in invalid_boxes:
+        response = client.post('/api/jobs', headers=ah, json={'operation': 'create_box', 'params': params})
+        assert response.status_code == 400, response.text
+    print('PASS: auth, queue, agent fetch/result, allowlist, box input bounds')

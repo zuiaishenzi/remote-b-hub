@@ -2,6 +2,7 @@
 All jobs are allowlisted. This component NEVER runs Windows commands.
 """
 import json
+import math
 import os
 import re
 import secrets
@@ -21,7 +22,7 @@ B_TOKEN = os.environ.get('HUB_B_TOKEN', '')
 if len(A_TOKEN) < 32 or len(B_TOKEN) < 32 or secrets.compare_digest(A_TOKEN, B_TOKEN):
     raise RuntimeError('Set independent HUB_A_TOKEN and HUB_B_TOKEN (minimum 32 characters each)')
 
-VALID_OPERATIONS = {'ping', 'system_info', 'solidworks_status', 'create_blank_part'}
+VALID_OPERATIONS = {'ping', 'system_info', 'solidworks_status', 'create_blank_part', 'create_box'}
 
 
 def init_db():
@@ -103,6 +104,17 @@ def submit_job(payload: JobRequest, authorization: str | None = Header(default=N
     if payload.operation == 'create_blank_part':
         if set(payload.params) != {'name'} or not isinstance(payload.params.get('name'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,50}', payload.params['name']):
             raise HTTPException(400, 'Provide name: 1-50 ASCII letters/digits/_/-')
+    elif payload.operation == 'create_box':
+        params = payload.params
+        required = {'name', 'length_mm', 'width_mm', 'height_mm'}
+        if set(params) != required:
+            raise HTTPException(400, 'create_box requires exactly name, length_mm, width_mm, height_mm')
+        if not isinstance(params['name'], str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,50}', params['name']):
+            raise HTTPException(400, 'Invalid part name')
+        for key in ('length_mm', 'width_mm', 'height_mm'):
+            value = params[key]
+            if type(value) not in (int, float) or not math.isfinite(value) or not 1 <= value <= 500:
+                raise HTTPException(400, f'{key} must be a finite number between 1 and 500 mm')
     elif payload.params:
         raise HTTPException(400, 'This operation does not accept params')
     job_id = str(uuid.uuid4())

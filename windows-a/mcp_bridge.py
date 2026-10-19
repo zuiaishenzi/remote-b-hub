@@ -57,6 +57,19 @@ def computer_b_create_blank_part(name: str) -> dict:
 
 
 @mcp.tool()
+def computer_b_create_box(name: str, length_mm: float, width_mm: float, height_mm: float) -> dict:
+    """Create a new rectangular SOLIDWORKS solid (mm) on PC B. Never overwrites files.
+    Dimensions must each be 1..500 mm. Returns a job_id; poll computer_b_job.
+    The initial sketch is geometric, not fully dimension-constrained.
+    """
+    return request('POST', '/api/jobs', {
+        'operation': 'create_box',
+        'params': {'name': name, 'length_mm': length_mm,
+                   'width_mm': width_mm, 'height_mm': height_mm}
+    })
+
+
+@mcp.tool()
 def computer_b_job(job_id: str) -> dict:
     """Retrieve the status and output of an earlier task by job ID. Read-only."""
     return request('GET', '/api/jobs/' + job_id)
