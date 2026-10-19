@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - 'windows-b/**'
+      - 'windows-a/**'
+      - 'linux-server/**'
       - 'tests/test_*.py'
       - 'tests/frozen_desktop_smoke.py'
       - 'scripts/build-desktop.ps1'
@@ -32,6 +34,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = 'desktop-' + $env:GITHUB_RUN_NUMBER + '-' + $env:GITHUB_RUN_ATTEMPT
-          $notes = 'Windows B desktop launcher. No tokens or personal settings are embedded. Source: ' + $env:GITHUB_SHA
-          gh release create $tag dist/RemoteBHub.exe --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Remote B Hub $tag" --notes $notes --latest
+          $notes = 'A/B desktop consoles, controlled C# Interop, diagnostic attachments. Upgrade NAS for new operations. No tokens or personal settings embedded. Source: ' + $env:GITHUB_SHA
+          gh release create $tag dist/RemoteBHub.exe dist/RemoteBClient.exe --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Remote B Hub $tag" --notes $notes --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

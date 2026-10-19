@@ -1,5 +1,11 @@
 # Remote B Hub
 
+本次升级：新增 A 桌面控制台、受限 PowerShell/C# Interop 文档控制、鉴权截图附件，
+并修复 B EXE 无法直接关闭的问题。新版“×”一次退出启动器并请求代理完成当前任务后停止；
+驻留使用独立的“最小化驻留”按钮。
+详见 [升级顺序、实际能力及图片/视频手动配置](docs/script-control-upgrade.md)。
+需要同时更新 NAS、A 桥接与 B EXE；新版文件见 [Releases](https://github.com/zuiaishenzi/remote-b-hub/releases/latest)。
+
 偏离原点的圆在 `FullyDefineSketch` 报“类型不匹配”时，参见
 [基准参数 COM 修复、执行器版本识别与偏心圆回归](docs/fully-define-com-fix.md)。
 修复需更新 B 实际运行的 EXE；源码拉取不会热更新 EXE。
@@ -71,8 +77,10 @@ Git 提交身份需已配置。失败时窗口会保留错误，已有本地提�
 | `ping`、`system_info` | 已编写 | 无需 SolidWorks，可用于端到端验证 |
 | `solidworks_status` | 已编写 | 查询当前用户会话中的 SolidWorks COM |
 | `create_blank_part` | 已编写，待实机验证 | 基于 `.prtdot` 创建**空白** SLDPRT，不做几何建模 |
-| SolidWorks 参数化特征/装配建模 | **未实现** | 后续通过 SolidWorks API 扩展 |
-| 远程 GUI 截图、鼠标键盘/Computer Use | **未实现** | 后续需专门的 GUI 执行模块 |
+| SolidWorks 参数化特征/装配建模 | 已有受限 recipe | 严格草图、拉伸/切除、插入零件及基本配合；装配仍需实机验收 |
+| PowerShell/C# Interop 文档控制 | 新增，待 B 验收 | 装配树、几何摘要、只读打开、重建、保存副本、安全关闭 |
+| SW 窗口诊断截图 | 新增，待 B 采集验收 | B 本地启用，NAS 独立鉴权附件，A 下载/打开 |
+| 实时视频、鼠标键盘/Computer Use | **未实现** | 视频需另行手动配置 |
 | 任意 PowerShell / 启停任意应用 | **未开放** | 当前采用严格操作白名单 |
 | 用户 Debian、FRP、电脑 A/B 实机部署 | **尚未完成** | 需要依照以下步骤逐项验证 |
 

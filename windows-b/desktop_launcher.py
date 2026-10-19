@@ -21,6 +21,16 @@ def command(*arguments):
     return [sys.executable, str(Path(__file__).resolve()), *arguments]
 
 
+def worker_running():
+    """Detect a worker finishing after its owning launcher has closed."""
+    import win32api, win32event
+    handle = win32event.CreateMutex(None, False, "Local\\RemoteBHubWorker")
+    try:
+        return win32api.GetLastError() == 183
+    finally:
+        win32api.CloseHandle(handle)
+
+
 def set_login_start(enabled):
     import winreg
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
@@ -74,7 +84,8 @@ class Launcher:
         self.variables = {}
         labels = (("server_url", "NAS 服务地址", None), ("token", "B Token / HUB_B_TOKEN", None),
                   ("output_dir", "CAD 输出目录", "directory"), ("part_template", "零件模板 (.prtdot)", "file"),
-                  ("assembly_template", "装配模板 (.asmdot)", "file"), ("sw_exe", "SOLIDWORKS 程序", "file"))
+                  ("assembly_template", "装配模板 (.asmdot)", "file"), ("sw_exe", "SOLIDWORKS 程序", "file"),
+                  ("interop_dir", "Interop 目录（留空自动定位）", "directory"))
         for row, (key, label, browse) in enumerate(labels):
             ttk.Label(fields, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
             variable = tk.StringVar(value=self.config[key])
@@ -89,18 +100,25 @@ class Launcher:
             self.variables[key] = tk.BooleanVar(value=self.config[key])
             ttk.Checkbutton(options, text=label, variable=self.variables[key]).pack(side="left", padx=(0, 12))
         controls = ttk.Frame(body)
+        capture_options = ttk.Frame(body)
+        capture_options.pack(fill="x", pady=(0, 6))
+        for key, label in (("screenshots_enabled", "允许上传 SOLIDWORKS 窗口截图（需要 NAS 附件接口）"),
+                           ("capture_on_error", "CAD 失败时自动截图；截图失败保留原错误")):
+            self.variables[key] = tk.BooleanVar(value=self.config[key])
+            ttk.Checkbutton(capture_options, text=label, variable=self.variables[key]).pack(side="left", padx=(0, 12))
         controls.pack(fill="x", pady=4)
         for label, callback in (("保存设置", self.save), ("检查状态", self.check), ("启动 SOLIDWORKS", self.start_sw),
                                 ("启动代理", self.start), ("停止代理（完成当前任务后）", self.stop),
                                 ("打开日志目录", lambda: os.startfile(str(self.directory)))):
             ttk.Button(controls, text=label, command=callback).pack(side="left", padx=(0, 6))
+        ttk.Button(controls, text="最小化驻留", command=root.iconify).pack(side="left")
         self.status = tk.StringVar(value="准备就绪")
         ttk.Label(body, textvariable=self.status, wraplength=960).pack(anchor="w", pady=(8, 4))
         self.log_widget = scrolledtext.ScrolledText(body, state="disabled", font=("Consolas", 10), wrap="word")
         self.log_widget.pack(fill="both", expand=True)
-        ttk.Label(body, text="关闭窗口会最小化并保持驻留。完整退出请点击右侧按钮；不会关闭 SOLIDWORKS。", foreground="#555555").pack(side="left", pady=(8, 0))
+        ttk.Label(body, text="关闭窗口会退出启动器；代理完成当前任务并回传后停止。驻留请点“最小化驻留”。", foreground="#555555").pack(side="left", pady=(8, 0))
         ttk.Button(body, text="退出启动器", command=self.quit).pack(side="right", pady=(8, 0))
-        root.protocol("WM_DELETE_WINDOW", root.iconify)
+        root.protocol("WM_DELETE_WINDOW", self.quit)
         if self.config_error:
             self.message("配置读取失败，请重新填写并保存: " + self.config_error)
         else:
@@ -115,7 +133,7 @@ class Launcher:
     def values(self):
         config = dict(self.config)
         for key, variable in self.variables.items():
-            config[key] = variable.get().strip() if key in ("server_url", "output_dir", "part_template", "assembly_template", "sw_exe") else variable.get()
+            config[key] = variable.get().strip() if key in ("server_url", "output_dir", "part_template", "assembly_template", "sw_exe", "interop_dir") else variable.get()
         config["server_url"] = config["server_url"].rstrip("/")
         self.secret = config["token"]
         return config
@@ -131,7 +149,7 @@ class Launcher:
 
     def save(self):
         from tkinter import messagebox
-        if self.process and self.process.poll() is None:
+        if (self.process and self.process.poll() is None) or worker_running():
             messagebox.showinfo("代理正在运行", "请先停止代理，等待当前任务结束后再保存设置。")
             return False
         try:
@@ -157,13 +175,18 @@ class Launcher:
         self.spawn_worker()
 
     def spawn_worker(self):
+        if worker_running():
+            self.want_agent = False
+            self.message("已有代理仍在运行或完成退出；请等待其停止后再启动。")
+            return
         (self.directory / "stop.request").unlink(missing_ok=True)
         # Retain an old status file only as historical data; never present it as current.
         (self.directory / "status.json").unlink(missing_ok=True)
         try:
             self.process = subprocess.Popen(command("--worker", "--data-dir", str(self.directory)),
                                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                            stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+                                            stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW,
+                                            env={**os.environ, 'PYINSTALLER_RESET_ENVIRONMENT': '1'})
         except Exception as exc:
             self.want_agent = False
             self.message(f"代理进程无法启动: {exc}")
@@ -240,7 +263,7 @@ class Launcher:
                 self.want_agent = False
                 self.message("代理已停止。" if code == 0 else f"代理已退出 code={code}；检查 startup-error.log 或是否已有代理运行。")
                 self.process = None
-        running = self.process is not None and self.process.poll() is None
+        running = (self.process is not None and self.process.poll() is None) or worker_running()
         description = "代理未运行"
         if running:
             description = "代理进程运行中；等待状态"
@@ -268,10 +291,9 @@ class Launcher:
         self.root.after(500, self.tick)
 
     def quit(self):
-        if self.starting_sw or (self.process and self.process.poll() is None):
-            self.stop()
-            self.message("代理/启动操作结束后，再点击退出；关闭窗口可保持驻留。")
-            return
+        # Worker owns an independent PyInstaller extraction directory, so it can
+        # finish the current task after this GUI exits. Do not kill COM/SW.
+        self.stop()
         self.root.destroy()
 
 
@@ -293,6 +315,10 @@ def main():
             assert unprotect_token(protect_token("self-test-token")) == "self-test-token"
             from desktop_version import runtime_info
             assert len(runtime_info()["executor_sha256"]) == 64
+            import interop_control, screen_capture
+            source_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "interop"
+            assert (source_dir / "SwInteropController.cs").is_file()
+            assert (source_dir / "BuildInterop.ps1").is_file()
             (directory / "self-test.json").write_text(json.dumps({"ok": True, "frozen": bool(getattr(sys, "frozen", False))}), encoding="utf-8")
             return 0
         if args.worker:
@@ -312,7 +338,23 @@ def main():
                 return 0
         app = Launcher(root, directory, args.smoke_test)
         if args.smoke_test:
-            root.after(1000, root.destroy)
+            if app.config['server_url'] and app.config['token']:
+                # Build-only lifecycle probe: close while a fake NAS has the
+                # worker blocked in a request. Never save/login-register config.
+                deadline = time.monotonic() + 15
+                def close_busy_worker():
+                    try:
+                        state = json.loads((directory / 'status.json').read_text(encoding='utf-8'))
+                    except (OSError, ValueError):
+                        state = {}
+                    if state.get('stage') == 'executing' or time.monotonic() >= deadline:
+                        app.quit()
+                    else:
+                        root.after(100, close_busy_worker)
+                root.after(100, app.spawn_worker)
+                root.after(200, close_busy_worker)
+            else:
+                root.after(1000, app.quit)
         else:
             root.deiconify()
             if args.autostart:

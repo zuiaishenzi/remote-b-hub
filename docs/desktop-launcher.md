@@ -17,8 +17,9 @@
 NAS 健康检查成功不等于 Token 正确；代理进入 `idle` 才表示已成功使用 B Token 轮询。
 “启动 SOLIDWORKS”可本地启动；如果代理已运行，则由 CAD 任务路径管理 SW 的启动。
 
-关闭窗口会最小化，任务栏里仍可恢复窗口；“退出启动器”才完全退出。
-运行中先点击停止，等待当前任务和网络调用结束，再点击退出。不会强杀建模或关闭 SW。
+新版关闭窗口或点“退出启动器”会立即退出窗口并请求代理停止；驻留请用“最小化驻留”。
+正在运行的任务会继续完成并尝试回传；网络失败的结果保留到下次启动。不会强杀建模或关闭 SW。
+重新打开会检查是否还有代理在完成退出，避免重复启动。
 更新 EXE 前也应先停止并退出旧版本。
 
 ## A 端能否自动启动 SW 和代理
@@ -37,7 +38,8 @@ SOLIDWORKS GUI/COM 需要交互式用户会话。如果 B 的启动器和代理�
 HTTP 请求没有接收者，只能在 NAS 排队。B 关机或用户未登录时也不保证能启动 SW。
 
 界面的“服务”对应本机任务代理；NAS systemd 服务只能检查 `/health`，本程序不远程
-SSH 启停 NAS。A 的 MCP、NAS API/schema 不需要升级或增加任意远程命令执行接口。
+SSH 启停 NAS。基础建模不增加任意远程命令执行接口；新增 C# 控制及截图需同步升级 A/NAS，
+见 [脚本控制与诊断图片升级](script-control-upgrade.md)。
 
 ## 配置和日志
 
@@ -69,7 +71,7 @@ NAS 现有在线指示依赖领取任务/回传结果时间；长时间 SW 启�
 
 仓库的 Windows Desktop 工作流会在相关源码更新时测试、打包并发布 GitHub Release。
 从仓库 Releases 下载 `RemoteBHub.exe`。本地也可以双击根目录 `build-desktop.bat`，
-构建产物为 `dist\RemoteBHub.exe`；构建端需要 Python 3.14 和 Git。
+构建产物为 `dist\RemoteBHub.exe` 和 A 端的 `dist\RemoteBClient.exe`；构建端需要 Python 3.14 和 Git。
 
 构建执行全部回归测试、冻结 EXE 模块/DPAPI 自检及隐藏窗口的 GUI 启动测试。
 这些检查不能代替 B 实机的 SW、NAS Token、开机登录和任务验收。

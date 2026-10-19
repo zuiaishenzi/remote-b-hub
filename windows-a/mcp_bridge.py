@@ -6,6 +6,7 @@ import os
 import urllib.request
 from typing import Literal
 from mcp.server import MCPServer
+from relay_client import RelayClient
 
 SERVER = os.environ['REMOTE_B_API_URL'].rstrip('/')
 TOKEN = os.environ['REMOTE_B_CLIENT_TOKEN']
@@ -100,6 +101,47 @@ def computer_b_revise_recipe(job_id: str, recipe: dict) -> dict:
 def computer_b_job(job_id: str) -> dict:
     """Retrieve the status and output of an earlier task by job ID. Read-only."""
     return request('GET', '/api/jobs/' + job_id)
+
+
+@mcp.tool()
+def computer_b_sw_document(action: Literal['inspect', 'open', 'rebuild', 'save_copy', 'close'],
+                           file: str | None = None, new_file: str | None = None) -> dict:
+    """Queue fixed C#/SOLIDWORKS Interop document control, never arbitrary code.
+    inspect returns feature/assembly trees and geometry summaries; omit file for active doc.
+    Other actions require a simple SLDPRT/SLDASM filename inside B's configured output root.
+    open is read-only; rebuild does not save; save_copy requires a NEW same-type filename;
+    close refuses modified documents. No existing CAD file is overwritten.
+    Requires upgraded NAS and B EXE, plus B's local SOLIDWORKS Interop DLLs.
+    """
+    params = {'action': action}
+    if file is not None:
+        params['file'] = file
+    if new_file is not None:
+        params['new_file'] = new_file
+    return request('POST', '/api/jobs', {'operation': 'sw_document', 'params': params})
+
+
+@mcp.tool()
+def computer_b_screenshot() -> dict:
+    """Queue a SOLIDWORKS-window screenshot. Requires local opt-in on B and NAS attachment API.
+    Returns job_id; poll the job, then list/download its artifacts. Never captures full desktop.
+    """
+    return request('POST', '/api/jobs', {'operation': 'screenshot'})
+
+
+@mcp.tool()
+def computer_b_artifacts(job_id: str) -> dict:
+    """List protected screenshot attachments for a real job. Images expire after 48 hours."""
+    return request('GET', '/api/jobs/' + job_id + '/artifacts')
+
+
+@mcp.tool()
+def computer_b_get_artifact(artifact_id: str) -> dict:
+    """Download a protected screenshot to a real local file on A, verifying size/type/hash.
+    The caller must explicitly open the returned downloaded path with an image-reading tool.
+    This dictionary alone does not give the model vision access.
+    """
+    return RelayClient(SERVER, TOKEN).download(artifact_id)
 
 
 if __name__ == '__main__':

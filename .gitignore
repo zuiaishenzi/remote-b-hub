@@ -21,6 +21,9 @@ status.json
 stop.request
 venv/
 output/
+artifacts/
+interop-build/
+*.image
 *.SLDPRT
 *.SLDASM
 *.SLDDRW

@@ -27,7 +27,7 @@ def text(value, what):
         raise ValueError(f"{what} is invalid")
 
 def validate_recipe(recipe):
-    obj(recipe, {"doc_type", "name", "operations", "components", "mates"},
+    obj(recipe, {"doc_type", "name", "operations", "components", "mates", "allow_underdefined"},
         {"doc_type", "name"})
     name(recipe["name"])
     kind = recipe["doc_type"]

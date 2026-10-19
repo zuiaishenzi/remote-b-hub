@@ -37,10 +37,11 @@ class DesktopConfigTests(unittest.TestCase):
 
 
 class WorkerQueueTests(unittest.TestCase):
-    def run_case(self, operation="ping", first_result_fails=False, execution_error=False):
+    def run_case(self, operation="ping", first_result_fails=False, execution_error=False, screenshots=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             settings = {**config.DEFAULTS, "server_url": "https://relay.example.test", "token": "sensitive-token-" * 3}
+            settings["screenshots_enabled"] = screenshots
             calls = []
             result_attempts = 0
             answers = []
@@ -67,6 +68,7 @@ class WorkerQueueTests(unittest.TestCase):
                 "pythoncom": types.SimpleNamespace(CoInitialize=lambda: None, CoUninitialize=lambda: None),
                 "win32api": types.SimpleNamespace(GetLastError=lambda: 0, CloseHandle=lambda h: None),
                 "win32event": types.SimpleNamespace(CreateMutex=lambda *a: object()),
+                "screen_capture": types.SimpleNamespace(capture_and_upload=Mock(side_effect=RuntimeError("capture unavailable"))),
             }
             with patch.dict(sys.modules, modules), patch.object(worker, "load_config", return_value=settings), \
                  patch.object(worker, "apply_environment"), patch.object(worker.time, "sleep"), \
@@ -92,6 +94,12 @@ class WorkerQueueTests(unittest.TestCase):
         result = self.run_case(execution_error=True)
         self.assertFalse(result["ok"])
         self.assertIn("[TOKEN REDACTED]", result["diagnostics"]["traceback"])
+
+    def test_screenshot_failure_preserves_original_cad_trace(self):
+        result = self.run_case(operation="sw_recipe", execution_error=True, screenshots=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("RuntimeError: error", result["diagnostics"]["traceback"])
+        self.assertEqual(result["diagnostics"]["screenshot_error"], "capture unavailable")
 
 
 class SolidWorksStartupTests(unittest.TestCase):

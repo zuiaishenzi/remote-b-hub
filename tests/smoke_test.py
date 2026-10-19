@@ -1,5 +1,6 @@
 """Run local smoke test without Windows or SolidWorks. Requires FastAPI + httpx."""
 import os
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -54,8 +55,9 @@ with tempfile.TemporaryDirectory() as directory:
                dict(rectangle, operations=[dict(rectangle['operations'][0], op='arbitrary_python')]),
                dict(rectangle, operations=[dict(rectangle['operations'][0], depth_mm=float('inf'))])]
     for item in invalid:
-        response = client.post('/api/jobs', headers=ah,
-            json={'operation': 'sw_recipe', 'params': {'recipe': item}})
+        response = client.post('/api/jobs',
+            headers={**ah, 'Content-Type': 'application/json'},
+            content=json.dumps({'operation': 'sw_recipe', 'params': {'recipe': item}}))
         assert response.status_code in (400, 422), response.text
     assembly = {'doc_type': 'assembly', 'name': 'Test_Assembly_001',
        'components': [

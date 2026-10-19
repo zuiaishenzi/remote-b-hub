@@ -13,6 +13,10 @@ def source_info():
     for path in sorted(directory.glob("*.py")):
         digest.update(path.name.encode("utf-8") + b"\0")
         digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
+    for path in sorted((directory / "interop").glob("*")):
+        if path.is_file():
+            digest.update(path.name.encode("utf-8") + b"\0")
+            digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
     return {"executor_sha256": digest.hexdigest(), "mode": "source"}
 
 

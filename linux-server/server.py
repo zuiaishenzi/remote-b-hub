@@ -9,12 +9,17 @@ import secrets
 import sqlite3
 import time
 import uuid
-from contextlib import contextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
+from contextlib import contextmanager, closing
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse
 from sw_schema import validate_recipe
+from control_schema import validate_document_request
+from artifact_store import ArtifactStore, MAX_IMAGE_BYTES
 from pydantic import BaseModel, ConfigDict, Field
 
 DB_PATH = Path(os.environ.get('HUB_DB', './jobs.sqlite3'))
@@ -23,12 +28,13 @@ B_TOKEN = os.environ.get('HUB_B_TOKEN', '')
 if len(A_TOKEN) < 32 or len(B_TOKEN) < 32 or secrets.compare_digest(A_TOKEN, B_TOKEN):
     raise RuntimeError('Set independent HUB_A_TOKEN and HUB_B_TOKEN (minimum 32 characters each)')
 
-VALID_OPERATIONS = {'ping', 'system_info', 'solidworks_status', 'create_blank_part', 'create_box', 'sw_recipe'}
+VALID_OPERATIONS = {'ping', 'system_info', 'solidworks_status', 'create_blank_part', 'create_box', 'sw_recipe',
+                    'sw_document', 'screenshot'}
 
 
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH, timeout=10) as db:
+    with closing(sqlite3.connect(DB_PATH, timeout=10)) as db:
         db.execute('PRAGMA journal_mode=WAL')
         db.execute('''CREATE TABLE IF NOT EXISTS jobs (
             id TEXT PRIMARY KEY,
@@ -94,13 +100,30 @@ class RevisionRequest(BaseModel):
     recipe: dict[str, Any]
 
 
-app = FastAPI(title='PC B Task Relay', docs_url=None, redoc_url=None, openapi_url=None)
+@asynccontextmanager
+async def lifespan(application):
+    async def prune():
+        while True:
+            await asyncio.sleep(3600)
+            await asyncio.to_thread(artifacts.cleanup)
+    task = asyncio.create_task(prune())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(title='PC B Task Relay', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 init_db()
+artifacts = ArtifactStore(DB_PATH, os.environ.get('HUB_ARTIFACT_DIR', str(DB_PATH.parent / 'artifacts')))
 
 
 @app.get('/health')
 def health():
-    return {'status': 'ok', 'service': 'pc-b-relay'}
+    return {'status': 'ok', 'service': 'pc-b-relay', 'protocol_version': 2,
+            'capabilities': ['sw_document', 'screenshot', 'artifacts']}
 
 
 @app.get('/api/status')
@@ -146,6 +169,11 @@ def submit_job(payload: JobRequest, authorization: str | None = Header(default=N
             validate_recipe(payload.params['recipe'])
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+    elif payload.operation == 'sw_document':
+        try:
+            validate_document_request(payload.params)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     elif payload.params:
         raise HTTPException(400, 'This operation does not accept params')
     job_id = str(uuid.uuid4())
@@ -170,7 +198,7 @@ def job_status(job_id: str, authorization: str | None = Header(default=None)):
     return {'job_id': row['id'], 'operation': row['operation'], 'status': row['status'],
             'result': json.loads(row['result']) if row['result'] else None,
             'progress': json.loads(row['progress']) if row['progress'] else None,
-            'request': stored_params if row['operation'] == 'sw_recipe' else None,
+            'request': stored_params if row['operation'] in ('sw_recipe', 'sw_document', 'screenshot') else None,
             'created': row['created'], 'updated': row['updated']}
 
 
@@ -243,3 +271,39 @@ def agent_result(job_id: str, result: JobResult, authorization: str | None = Hea
             raise HTTPException(409, 'Unknown or already completed job')
         db.execute('INSERT INTO heartbeat (agent_id,last_seen) VALUES (?,?) ON CONFLICT(agent_id) DO UPDATE SET last_seen=excluded.last_seen', ('pc-b',time.time()))
     return {'saved': True}
+
+
+@app.post('/agent/jobs/{job_id}/artifacts')
+async def upload_artifact(job_id: str, request: Request, authorization: str | None = Header(default=None)):
+    require_auth(authorization, B_TOKEN)
+    with database() as db:
+        row = db.execute('SELECT status FROM jobs WHERE id=?', (job_id,)).fetchone()
+    if row is None or row['status'] != 'running':
+        raise HTTPException(409, 'Only running jobs can upload artifacts')
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > MAX_IMAGE_BYTES:
+            raise HTTPException(413, 'Screenshot exceeds 5 MiB')
+    try:
+        return artifacts.put(job_id, request.headers.get('content-type', '').split(';')[0], bytes(content))
+    except Exception as exc:
+        # Invalid/unsupported images and quotas are client errors, never job success.
+        raise HTTPException(400, 'Screenshot rejected: ' + str(exc)[:160]) from exc
+
+
+@app.get('/api/jobs/{job_id}/artifacts')
+def list_artifacts(job_id: str, authorization: str | None = Header(default=None)):
+    require_auth(authorization, A_TOKEN)
+    return {'artifacts': artifacts.list(job_id)}
+
+
+@app.get('/api/artifacts/{artifact_id}')
+def get_artifact(artifact_id: str, authorization: str | None = Header(default=None)):
+    require_auth(authorization, A_TOKEN)
+    try:
+        row, path = artifacts.get(artifact_id)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(404, 'Screenshot expired or not found') from exc
+    return FileResponse(path, media_type=row['content_type'], filename=artifact_id + ('.png' if row['content_type'] == 'image/png' else '.jpg'),
+                        headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Content-SHA256': row['sha256']})

@@ -13,7 +13,7 @@ import traceback
 from desktop_config import load_config, apply_environment, redact
 from desktop_version import runtime_info
 
-CAD_OPERATIONS = {"solidworks_status", "create_blank_part", "create_box", "sw_recipe"}
+CAD_OPERATIONS = {"solidworks_status", "create_blank_part", "create_box", "sw_recipe", "sw_document"}
 
 
 def sw_status():
@@ -110,7 +110,7 @@ def run_worker(directory):
     def log(value):
         logger.info(redact(value, config["token"]))
     def state(stage, **extra):
-        write_json(state_file, {"stage": stage, "updated": time.time(), **extra})
+        write_json(state_file, {"stage": stage, "updated": time.time(), "pid": os.getpid(), **extra})
     pythoncom.CoInitialize()
     try:
         # Imports require configuration environment; keep them inside this function.
@@ -169,7 +169,15 @@ def run_worker(directory):
                 progress("executing", f"开始执行 {job['operation']}")
                 stream = TaskOutput(progress)
                 with redirect_stdout(stream), redirect_stderr(stream):
-                    result = status if job["operation"] == "solidworks_status" else execute(job["operation"], job["params"])
+                    if job["operation"] == "sw_document":
+                        from interop_control import execute_document
+                        progress("interop_control", "执行受限 C# / SOLIDWORKS Interop 文档操作")
+                        result = execute_document(job["params"], config, directory)
+                    elif job["operation"] == "screenshot":
+                        from screen_capture import capture_and_upload
+                        result = {"artifacts": [capture_and_upload(job_id, config)]}
+                    else:
+                        result = status if job["operation"] == "solidworks_status" else execute(job["operation"], job["params"])
                     stream.flush()
                 result["agent_log_tail"] = history[-20:]
                 result["executor"] = version
@@ -182,6 +190,14 @@ def run_worker(directory):
                           "diagnostics": {"stage": current_stage, "traceback": trace[-5000:],
                                           "operation": job["operation"], "log_tail": history[-20:],
                                           "executor": version}}
+                if config.get("screenshots_enabled") and config.get("capture_on_error") and job["operation"] in CAD_OPERATIONS:
+                    try:
+                        from screen_capture import capture_and_upload
+                        answer["diagnostics"]["artifacts"] = [capture_and_upload(job_id, config)]
+                        log("SOLIDWORKS 错误截图已作为独立附件上传")
+                    except Exception as capture_error:
+                        answer["diagnostics"]["screenshot_error"] = redact(str(capture_error), config["token"])[:400]
+                        log("截图/上传未完成，保留原建模错误: " + str(capture_error))
             write_json(outbox, {"job_id": job_id, "answer": answer})
             # Even if Stop was clicked during CAD, send the result before exiting.
             try:

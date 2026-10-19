@@ -20,6 +20,12 @@ if errorlevel 1 goto failed
 
 echo.
 echo [1/4] Checking Python syntax and COM regression tests...
+py -3 -c "import fastapi, httpx, PIL" >nul 2>&1
+if errorlevel 1 (
+  echo Installing local regression-test dependencies...
+  py -3 -m pip install -r tests\requirements.txt
+  if errorlevel 1 goto failed
+)
 py -3 -m py_compile windows-b\solidworks_box.py windows-b\sw_constraints.py windows-b\sw_recipe.py windows-b\probe_selection_manager.py windows-b\probe_parametric_part.py
 if errorlevel 1 goto failed
 py -3 -m unittest discover -s tests -p test_*.py -v
