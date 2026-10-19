@@ -45,6 +45,7 @@ class MockModel:
         self.values = iter(expected_meters)
         self.index = 0
         self.SelectionManager = MockSelectionManager()
+        self.ISelectionManager = MockSelectionManager()
 
     def ClearSelection2(self, _):
         return True
@@ -96,13 +97,32 @@ class ConstraintLengthRegressionTests(unittest.TestCase):
         self.assertEqual([d["role"] for d in dimensions], ["width", "height"])
         self.assertEqual([d["mm"] for d in dimensions], [60.0, 40.0])
         self.assertEqual(model.index, 2)
-        self.assertEqual(len(model.SelectionManager.created), 2)
+        self.assertEqual(len(model.ISelectionManager.created), 2)
+        self.assertEqual(len(model.SelectionManager.created), 0)
 
     def test_com_get_length_as_property(self):
         self.check_geometry(PropertyLengthSegment)
 
     def test_com_get_length_as_method(self):
         self.check_geometry(MethodLengthSegment)
+
+    def test_fallback_to_legacy_selection_manager(self):
+        from sw_constraints import create_select_data
+        model = MockModel([])
+        del model.ISelectionManager
+        data = create_select_data(model)
+        self.assertEqual(data.Mark, 0)
+        self.assertEqual(len(model.SelectionManager.created), 1)
+
+    def test_fallback_when_strong_interface_fails(self):
+        from sw_constraints import create_select_data
+        model = MockModel([])
+        class BadSelectionManager:
+            def CreateSelectData(self):
+                raise OSError("COM member not found")
+        model.ISelectionManager = BadSelectionManager()
+        data = create_select_data(model)
+        self.assertEqual(data.Mark, 0)
 
     def test_select4_rejects_missing_select_data(self):
         segment = PropertyLengthSegment(0.06)

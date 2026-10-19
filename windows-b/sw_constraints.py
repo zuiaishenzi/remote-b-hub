@@ -33,17 +33,32 @@ def dimension_info(display_dimension, expected_mm, key):
     return {"role": key, "dimension": full_name, "mm": round(value, 6),
             "driving_dimension_created": True}
 
-def select_segment(model, segment):
-    """Select a sketch segment with an actual ISelectData COM object.
-
-    pywin32 may marshal Python None as VT_NULL, whereas ISketchSegment.Select4
-    requires a SelectData interface. Construct it through ISelectionMgr.
+def create_select_data(model):
+    """Prefer the strongly typed ISelectionManager property when pywin32 dispatches
+    SelectionManager as a less-specific COM object. Try the legacy property if
+    the strongly typed one is unavailable.
     """
+    errors = []
+    for property_name in ("ISelectionManager", "SelectionManager"):
+        try:
+            manager = getattr(model, property_name)
+            if manager is None:
+                raise RuntimeError("Selection manager returned None")
+            member = getattr(manager, "CreateSelectData")
+            select_data = member() if callable(member) else member
+            if select_data is None:
+                raise RuntimeError("CreateSelectData returned None")
+            select_data.Mark = 0
+            return select_data
+        except Exception as exc:
+            errors.append(f"{property_name}: {type(exc).__name__}: {exc}")
+    raise RuntimeError("Unable to create ISelectData; " + " | ".join(errors))
+
+
+def select_segment(model, segment):
+    """Select a sketch segment using an ISelectData COM interface."""
     model.ClearSelection2(True)
-    select_data = model.SelectionManager.CreateSelectData()
-    if select_data is None:
-        raise RuntimeError("SolidWorks CreateSelectData returned None")
-    select_data.Mark = 0
+    select_data = create_select_data(model)
     if not segment.Select4(False, select_data):
         raise RuntimeError("Failed to select a sketch segment for a driving dimension")
 
