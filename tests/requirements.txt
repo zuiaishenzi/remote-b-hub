@@ -1,2 +1,3 @@
 -r ../linux-server/requirements.txt
 httpx>=0.28,<1
+-r ../windows-a/requirements.txt

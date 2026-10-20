@@ -45,6 +45,7 @@ class ClientWindow:
         buttons = ttk.Frame(panel)
         buttons.pack(fill='x', pady=8)
         for label, callback in (('保存配置', self.save), ('启动 Codex', self.start_codex),
+                                ('建模技能', self.open_skills),
                                 ('检查 B 在线状态', lambda: self.call('status', lambda c: c.request('GET', '/api/status'))),
                                 ('请求 SW 截图', lambda: self.call('submitted', lambda c: c.request('POST', '/api/jobs', {'operation': 'screenshot'})))):
             ttk.Button(buttons, text=label, command=callback).pack(side='left', padx=(0, 8))
@@ -64,6 +65,10 @@ class ClientWindow:
         self.output.pack(fill='both', expand=True, pady=8)
         ttk.Label(panel, text='截图通过 A Token 下载到本机；实时视频/远控需另行配置。启动 Codex 需已有 CLI 与 pc-b 注册。').pack(anchor='w')
         root.after(200, self.tick)
+
+    def open_skills(self):
+        from cad_skill_window import SkillWindow
+        return SkillWindow(self)
 
     def client(self):
         server, token = self.variables['server_url'].get().rstrip('/'), self.variables['token'].get()
@@ -180,8 +185,16 @@ def main():
         root = tk.Tk()
         if args.smoke_test:
             root.withdraw()
-        ClientWindow(root, directory)
+        client_window = ClientWindow(root, directory)
         if args.smoke_test:
+            from cad_skills import catalog, plan_part, install_project_skills
+            assert len(catalog()['skills']) == 2
+            for template in catalog()['templates']:
+                plan_part(template, {}, 'Smoke_' + template)
+            skill_window = client_window.open_skills()
+            skill_window.window.withdraw()
+            skill_window.plan()
+            install_project_skills(directory)
             from desktop_config import protect_token, unprotect_token
             assert unprotect_token(protect_token('a-side-build-test')) == 'a-side-build-test'
             root.after(700, root.destroy)

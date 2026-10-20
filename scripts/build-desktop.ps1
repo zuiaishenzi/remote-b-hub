@@ -20,6 +20,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Relay API smoke test failed' }
     & $pythonPath tests/e2e_http_test.py
     if ($LASTEXITCODE -ne 0) { throw 'Relay HTTP integration test failed' }
+    & $pythonPath tests/mcp_skills_smoke.py
+    if ($LASTEXITCODE -ne 0) { throw 'Real MCP skill discovery/planning smoke test failed' }
     & $pythonPath windows-b/desktop_version.py build/runtime-info.json
     if ($LASTEXITCODE -ne 0) { throw 'Could not fingerprint executor sources' }
     & $pythonPath -m PyInstaller --noconfirm --clean --onefile --windowed --name RemoteBHub --paths windows-b --add-data 'build/runtime-info.json;.' --add-data 'windows-b/interop;interop' --hidden-import win32timezone --hidden-import win32com.client --hidden-import win32com.server --hidden-import win32crypt --hidden-import win32ts windows-b/desktop_launcher.py
@@ -33,7 +35,7 @@ try {
     if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath "$testDirectory\gui-smoke.json")) { throw 'Frozen GUI smoke test failed' }
     & $pythonPath tests/frozen_desktop_smoke.py $appPath
     if ($LASTEXITCODE -ne 0) { throw 'Frozen worker HTTP smoke test failed' }
-    & $pythonPath -m PyInstaller --noconfirm --clean --onefile --windowed --name RemoteBClient --paths windows-a --paths windows-b --hidden-import win32crypt windows-a/client_gui.py
+    & $pythonPath -m PyInstaller --noconfirm --clean --onefile --windowed --name RemoteBClient --paths windows-a --paths windows-b --add-data '.agents/skills;skill-library' --hidden-import win32crypt windows-a/client_gui.py
     if ($LASTEXITCODE -ne 0) { throw 'A client EXE build failed' }
     $clientPath = Join-Path $repoPath 'dist\RemoteBClient.exe'
     $clientTestDirectory = Join-Path $testDirectory 'a-client'

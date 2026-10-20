@@ -6,7 +6,10 @@ import os
 import urllib.request
 from typing import Literal
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from relay_client import RelayClient
+from cad_skills import catalog, plan_part, review_part
+import uuid
 
 SERVER = os.environ['REMOTE_B_API_URL'].rstrip('/')
 TOKEN = os.environ['REMOTE_B_CLIENT_TOKEN']
@@ -25,6 +28,45 @@ def request(method, path, body=None):
 
 
 mcp = MCPServer('PC-B-Remote-Tools')
+
+
+@mcp.tool()
+def computer_b_modeling_skills(skill: str | None = None) -> dict:
+    """Read reviewed SolidWorks 2023 skills, template parameters and capability limits.
+    Local knowledge only; does not connect to B or claim real CAD acceptance.
+    """
+    try:
+        return catalog(skill)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+
+
+@mcp.tool()
+def computer_b_plan_part(template: Literal['box', 'cylinder', 'tube', 'two_hole_plate'],
+                         parameters: dict, name: str) -> dict:
+    """Compile mm parameters into a strictly validated recipe, reporting all defaults.
+    Local preflight only. Submit the returned recipe using computer_b_sw_recipe;
+    poll the actual job and use computer_b_review_part. No arbitrary code/macros.
+    """
+    try:
+        return plan_part(template, parameters, name)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+
+
+@mcp.tool()
+def computer_b_review_part(template: Literal['box', 'cylinder', 'tube', 'two_hole_plate'],
+                           parameters: dict, name: str, job_id: str) -> dict:
+    """Fetch a REAL job and compare its request, features, sketches, dimensions and save
+    evidence against the design contract. Reports missing evidence explicitly.
+    A passing process review does not prove actual depth, topology or motion.
+    """
+    try:
+        identity = str(uuid.UUID(job_id))
+        plan_part(template, parameters, name)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return review_part(template, parameters, name, request('GET', '/api/jobs/' + identity))
 
 
 @mcp.tool()
@@ -75,7 +117,8 @@ def computer_b_create_box(name: str, length_mm: float, width_mm: float, height_m
 @mcp.tool()
 def computer_b_sw_recipe(recipe: dict) -> dict:
     """Execute a restricted SolidWorks modeling plan (part or assembly) on PC B.
-    Part operations: boss_extrude, cut_extrude; profiles: rectangle, circle, polygon.
+    Strict part operations: boss_extrude, cut_extrude; profiles: rectangle, circle.
+    Polygon is legacy-only and is rejected in strict mode. Prefer computer_b_plan_part.
     Assembly: insert .SLDPRT from configured output directory; mates: coincident,
     concentric, parallel, perpendicular, distance, angle by explicit reference plane
     or named entity. Coordinates are millimeters, angles degrees. No arbitrary COM,
