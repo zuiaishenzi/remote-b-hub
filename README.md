@@ -1,5 +1,9 @@
 # Remote B Hub
 
+启动 SW 报 `winmgmts` / “无效的语法”时，参见
+[SolidWorks 自动启动修复与更新步骤](docs/sw-startup-fix.md)。已移除启动检查对 WMI 的依赖，
+代理运行时也可点击“启动 SW”交由代理顺序处理；B 使用“检查更新”升级即可。
+
 新增 **A/B 桌面端“检查更新”**：从 GitHub 稳定 Release 下载、核对 SHA256、隔离自检，
 退出后替换并重启，保留已保存的 Token、模板和路径。旧版需首次手动更新一次，以后可在程序内更新。
 同时新增 **AngelSix / SolidDNA 的 SW2023 Interop 技能适配**与受限尺寸读取；不是直接运行整个上游 SDK。

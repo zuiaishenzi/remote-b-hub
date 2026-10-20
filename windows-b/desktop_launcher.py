@@ -209,6 +209,7 @@ class Launcher:
 
     def stop(self):
         self.want_agent = False
+        (self.directory / 'start-sw.request').unlink(missing_ok=True)
         (self.directory / "stop.request").touch()
         self.message("已请求停止；等待当前建模/网络调用完成，不强杀 SOLIDWORKS。")
 
@@ -233,8 +234,10 @@ class Launcher:
         threading.Thread(target=run, daemon=True).start()
 
     def start_sw(self):
-        if self.process and self.process.poll() is None:
-            self.message("代理正在运行；CAD 任务将自动检查/启动 SW。单独启动请先停止代理。")
+        if (self.process and self.process.poll() is None) or worker_running():
+            from desktop_worker import request_solidworks_start
+            request_solidworks_start(self.directory)
+            self.message("已请求代理启动 SW；当前任务结束后执行，使用已保存的 SW 程序路径。")
             return
         if self.starting_sw:
             return
@@ -334,6 +337,9 @@ def main():
             from desktop_version import runtime_info
             assert len(runtime_info()["executor_sha256"]) == 64
             import interop_control, screen_capture
+            from windows_processes import process_snapshot, process_session
+            assert any(pid == os.getpid() for pid, name in process_snapshot())
+            assert process_session() >= 0
             source_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "interop"
             assert (source_dir / "SwInteropController.cs").is_file()
             assert (source_dir / "BuildInterop.ps1").is_file()

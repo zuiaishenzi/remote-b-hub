@@ -19,6 +19,7 @@ config.json
 pending-result.json
 status.json
 stop.request
+start-sw.request
 venv/
 output/
 artifacts/

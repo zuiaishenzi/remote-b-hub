@@ -103,24 +103,50 @@ class WorkerQueueTests(unittest.TestCase):
 
 
 class SolidWorksStartupTests(unittest.TestCase):
+    def test_local_start_request_runs_between_jobs_and_honors_explicit_start(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            worker.request_solidworks_start(tmp)
+            with patch.object(worker,'ensure_solidworks',return_value={'revision':'31.5'}) as start:
+                worker.handle_solidworks_request({**config.DEFAULTS,'auto_start_sw':False},tmp,Mock(),lambda:False)
+                self.assertTrue(start.call_args.args[0]['auto_start_sw'])
+            self.assertFalse((Path(tmp)/'start-sw.request').exists())
+
+    def test_old_local_request_does_not_unexpectedly_launch_sw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'start-sw.request'
+            path.write_text('{"created":0}')
+            with patch.object(worker,'ensure_solidworks') as start:
+                worker.handle_solidworks_request(config.DEFAULTS,tmp,Mock(),lambda:False)
+                start.assert_not_called()
+
     def launch_case(self, already_starting=False, timeout=False, cancelled=False):
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / "SLDWORKS.exe"
             executable.touch()
             settings = {**config.DEFAULTS, "sw_exe": str(executable), "sw_start_timeout": 0 if timeout else 10}
-            client = types.SimpleNamespace(GetObject=Mock())
-            client.GetObject.return_value.ExecQuery.return_value = [object()] if already_starting else []
-            modules = {"win32com": types.SimpleNamespace(client=client), "win32com.client": client,
-                       "win32ts": types.SimpleNamespace(ProcessIdToSessionId=lambda pid: 1)}
             report = Mock()
-            with patch.dict(sys.modules, modules), patch.object(worker, "sw_status", side_effect=[OSError("not running"), {"connected": True, "revision": "31.5"}]), \
+            with patch.object(worker, 'process_session', return_value=1), \
+                 patch.object(worker, 'processes_in_session', return_value=[123] if already_starting else []), \
+                 patch.object(worker, "sw_status", side_effect=[OSError("not running"), {"connected": True, "revision": "31.5"}]), \
                  patch.object(worker.subprocess, "Popen") as launch:
                 if timeout or cancelled:
                     with self.assertRaises((TimeoutError, RuntimeError)):
                         worker.ensure_solidworks(settings, report, lambda: cancelled)
                 else:
                     self.assertTrue(worker.ensure_solidworks(settings, report)["connected"])
-                self.assertEqual(launch.call_count, int(not already_starting))
+                self.assertEqual(launch.call_count, int(not already_starting and not cancelled))
+
+    def test_failed_native_scan_does_not_blindly_launch_another_sw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            executable=Path(tmp)/'SLDWORKS.exe'
+            executable.touch()
+            with patch.object(worker,'sw_status',side_effect=OSError('not ready')), \
+                 patch.object(worker,'process_session',return_value=1), \
+                 patch.object(worker,'processes_in_session',side_effect=OSError('scan denied')), \
+                 patch.object(worker.subprocess,'Popen') as launch:
+                with self.assertRaisesRegex(RuntimeError,'避免重复启动'):
+                    worker.ensure_solidworks({**config.DEFAULTS,'sw_exe':str(executable)},Mock())
+                launch.assert_not_called()
 
     def test_stopped_sw_is_launched_and_com_readiness_checked(self):
         self.launch_case()

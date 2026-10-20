@@ -12,6 +12,7 @@ import traceback
 
 from desktop_config import load_config, apply_environment, redact
 from desktop_version import runtime_info
+from windows_processes import process_session, processes_in_session
 
 CAD_OPERATIONS = {"solidworks_status", "create_blank_part", "create_box", "sw_recipe", "sw_document"}
 
@@ -33,23 +34,27 @@ def ensure_solidworks(config, progress, stop_requested=lambda: False):
     """Only launch for a CAD task or an explicit local Start button."""
     try:
         return sw_status()
-    except Exception:
+    except Exception as exc:
         if not config["auto_start_sw"]:
             raise RuntimeError("SOLIDWORKS 未运行，且未启用自动启动")
+        progress('checking_solidworks_process', 'COM 未就绪，检查当前会话的 SOLIDWORKS 进程：' + str(exc))
     executable = Path(config["sw_exe"])
     if not executable.is_file():
         raise FileNotFoundError(f"SOLIDWORKS 程序不存在，请在启动器中配置: {executable}")
     # Do not spawn a second SW process when one is still registering its COM object.
-    import win32com.client
-    import win32ts
-    session = win32ts.ProcessIdToSessionId(os.getpid())
-    processes = win32com.client.GetObject("winmgmts:").ExecQuery(
-        f"SELECT ProcessId FROM Win32_Process WHERE Name='SLDWORKS.exe' AND SessionId={session}")
-    if not list(processes):
+    session = process_session()
+    try:
+        processes = processes_in_session('SLDWORKS.exe', session)
+    except OSError as exc:
+        raise RuntimeError('无法检查当前会话进程；为避免重复启动，已停止：' + str(exc)) from exc
+    if stop_requested():
+        raise RuntimeError('收到停止请求；未启动 SOLIDWORKS')
+    if not processes:
         progress("starting_solidworks", "正在启动 SOLIDWORKS，等待 COM 就绪")
-        subprocess.Popen([str(executable)], cwd=str(executable.parent))
+        process = subprocess.Popen([str(executable)], cwd=str(executable.parent))
+        progress('waiting_solidworks_com', f'SOLIDWORKS 启动请求已发送 PID={process.pid}，等待当前会话 COM 就绪')
     else:
-        progress("starting_solidworks", "检测到 SOLIDWORKS 进程，等待本会话 COM 就绪")
+        progress("starting_solidworks", f"检测到本会话 SOLIDWORKS 进程 PID={processes}，等待 COM 就绪")
     deadline = time.monotonic() + config["sw_start_timeout"]
     while time.monotonic() < deadline:
         if stop_requested():
@@ -67,6 +72,29 @@ def write_json(path, value):
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
     temporary.replace(path)
+
+
+def request_solidworks_start(directory):
+    """GUI asks the existing worker to launch SW between jobs, never concurrently."""
+    write_json(Path(directory) / 'start-sw.request', {'created': time.time()})
+
+
+def handle_solidworks_request(config, directory, progress, stop_requested):
+    path = Path(directory) / 'start-sw.request'
+    if not path.exists():
+        return None
+    content = path.read_text(encoding='utf-8')
+    path.unlink(missing_ok=True)
+    request = json.loads(content)
+    created = request.get('created')
+    age = time.time() - created if type(created) in (int, float) else float('nan')
+    if not -30 <= age <= 300:
+        progress('start_request_expired', '本地 SW 启动请求已过期，已忽略')
+        return None
+    progress('local_start_requested', '收到本地启动 SW 请求；使用已保存的程序路径')
+    result = ensure_solidworks({**config, 'auto_start_sw': True}, progress, stop_requested)
+    progress('solidworks_ready', '本地启动完成，COM 版本 ' + result['revision'])
+    return result
 
 
 class TaskOutput(io.TextIOBase):
@@ -134,6 +162,17 @@ def run_worker(directory):
                     state("result_retry", job_id=pending["job_id"])
                     time.sleep(5)
                     continue
+            def local_progress(stage, detail):
+                log(stage + ': ' + detail)
+                state(stage, detail=redact(detail, config['token'])[:300])
+            try:
+                handle_solidworks_request(config, directory, local_progress, stop_file.exists)
+            except Exception:
+                trace = redact(traceback.format_exc(limit=12), config['token'])
+                log('本地启动 SOLIDWORKS 失败：' + trace)
+                state('solidworks_start_error', error=trace[-1200:])
+            if stop_file.exists():
+                break
             try:
                 state("polling")
                 job = agent.api("GET", "/agent/next").get("job")
