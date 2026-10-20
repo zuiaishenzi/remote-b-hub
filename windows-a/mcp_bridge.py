@@ -148,19 +148,30 @@ def computer_b_job(job_id: str) -> dict:
 
 @mcp.tool()
 def computer_b_sw_document(action: Literal['inspect', 'open', 'rebuild', 'save_copy', 'close'],
-                           file: str | None = None, new_file: str | None = None) -> dict:
+                           file: str | None = None, new_file: str | None = None,
+                           dimension_names: list[str] | None = None) -> dict:
     """Queue fixed C#/SOLIDWORKS Interop document control, never arbitrary code.
     inspect returns feature/assembly trees and geometry summaries; omit file for active doc.
     Other actions require a simple SLDPRT/SLDASM filename inside B's configured output root.
     open is read-only; rebuild does not save; save_copy requires a NEW same-type filename;
     close refuses modified documents. No existing CAD file is overwritten.
     Requires upgraded NAS and B EXE, plus B's local SOLIDWORKS Interop DLLs.
+    inspect optionally accepts up to 20 dimension_names like D1@Sketch1 (not
+    the document-qualified full name). Returns actual system values, never edits them.
+    Length system values are meters; angle values are radians. Do not assume all are mm.
     """
     params = {'action': action}
     if file is not None:
         params['file'] = file
     if new_file is not None:
         params['new_file'] = new_file
+    if dimension_names is not None:
+        params['dimension_names'] = dimension_names
+    from control_schema import validate_document_request
+    try:
+        validate_document_request(params)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
     return request('POST', '/api/jobs', {'operation': 'sw_document', 'params': params})
 
 

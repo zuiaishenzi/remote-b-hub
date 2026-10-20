@@ -46,6 +46,7 @@ class ClientWindow:
         buttons.pack(fill='x', pady=8)
         for label, callback in (('保存配置', self.save), ('启动 Codex', self.start_codex),
                                 ('建模技能', self.open_skills),
+                                ('检查更新', self.open_update),
                                 ('检查 B 在线状态', lambda: self.call('status', lambda c: c.request('GET', '/api/status'))),
                                 ('请求 SW 截图', lambda: self.call('submitted', lambda c: c.request('POST', '/api/jobs', {'operation': 'screenshot'})))):
             ttk.Button(buttons, text=label, command=callback).pack(side='left', padx=(0, 8))
@@ -69,6 +70,10 @@ class ClientWindow:
     def open_skills(self):
         from cad_skill_window import SkillWindow
         return SkillWindow(self)
+
+    def open_update(self):
+        from update_window import UpdateWindow
+        return UpdateWindow(self.root, self.directory, 'a')
 
     def client(self):
         server, token = self.variables['server_url'].get().rstrip('/'), self.variables['token'].get()
@@ -178,7 +183,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--smoke-test', action='store_true')
     parser.add_argument('--data-dir')
+    parser.add_argument('--apply-update')
     args = parser.parse_args()
+    if args.apply_update:
+        from desktop_update import apply_update
+        return apply_update(args.apply_update)
     directory = Path(args.data_dir) if args.data_dir else Path(os.environ['LOCALAPPDATA']) / 'RemoteBHubA'
     try:
         import tkinter as tk
@@ -188,19 +197,21 @@ def main():
         client_window = ClientWindow(root, directory)
         if args.smoke_test:
             from cad_skills import catalog, plan_part, install_project_skills
-            assert len(catalog()['skills']) == 2
+            assert len(catalog()['skills']) == 3
             for template in catalog()['templates']:
                 plan_part(template, {}, 'Smoke_' + template)
             skill_window = client_window.open_skills()
             skill_window.window.withdraw()
             skill_window.plan()
+            update_window = client_window.open_update()
+            update_window.window.withdraw()
             install_project_skills(directory)
             from desktop_config import protect_token, unprotect_token
             assert unprotect_token(protect_token('a-side-build-test')) == 'a-side-build-test'
             root.after(700, root.destroy)
         root.mainloop()
         if args.smoke_test:
-            (directory / 'client-smoke.json').write_text('{"ok":true}', encoding='utf-8')
+            (directory / 'client-smoke.json').write_text('{"ok":true,"updater_support":true}', encoding='utf-8')
         return 0
     except Exception:
         import traceback

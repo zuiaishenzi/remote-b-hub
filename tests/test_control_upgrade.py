@@ -47,6 +47,14 @@ class ControlTests(unittest.TestCase):
         validate_document_request({'action': 'inspect'})
         validate_document_request({'action': 'save_copy', 'file': 'x.SLDPRT', 'new_file': 'y.SLDPRT'})
 
+    def test_named_dimension_queries_are_read_only_bounded_and_explicit(self):
+        validate_document_request({'action':'inspect','dimension_names':['D1@草图1','D1@Boss-Extrude1']})
+        for names in [[], ['D1'], ['D1@Sketch1@Part'], ['D1@../x'], ['D1@Sketch1\n'], [True], ['D1@S']*21]:
+            with self.subTest(names=names),self.assertRaises(ValueError):
+                validate_document_request({'action':'inspect','dimension_names':names})
+        with self.assertRaises(ValueError):
+            validate_document_request({'action':'rebuild','file':'x.SLDPRT','dimension_names':['D1@S']})
+
     def test_paths_require_existing_input_and_never_overwrite(self):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp)/'x.SLDPRT').write_bytes(b'example')
@@ -78,6 +86,30 @@ class ControlTests(unittest.TestCase):
             run = subprocess.run([str(target), '--contract-test'], capture_output=True)
             self.assertEqual(run.returncode, 0, run.stdout.decode(errors='replace'))
             self.assertIn('save_copy', json.loads(run.stdout.decode('utf-8-sig'))['actions'])
+            # Execute the actual read-only dimension extraction method against
+            # controlled public .NET objects, not COM or invented CAD results.
+            probe = tmp/'probe.cs'
+            probe.write_text('using System; using System.Web.Script.Serialization; '
+                'public class DimensionFixture { public double SystemValue {get;set;} public string FullName {get;set;} } '
+                'public class DocumentFixture { public int Reads; public object Parameter(string n) { Reads++; '
+                'if(n=="Missing@S")return null; return new DimensionFixture { FullName=n+"@Part", '
+                'SystemValue=n=="NaN@S"?double.NaN:0.020 }; }} '
+                'public class Probe { public static void Main() { var doc=new DocumentFixture(); '
+                'var rows=Program.ReadDimensions(doc,new[]{"D1@S","Missing@S","NaN@S"}); '
+                'Console.WriteLine(new JavaScriptSerializer().Serialize(new { rows=rows, reads=doc.Reads })); }}')
+            probe_exe=tmp/'probe.exe'
+            result=subprocess.run([str(compiler),'/nologo','/main:Probe','/r:Microsoft.CSharp.dll',
+                '/r:System.Web.Extensions.dll','/r:'+str(library),'/out:'+str(probe_exe),
+                str(ROOT/'windows-b/interop/SwInteropController.cs'),str(probe)],capture_output=True)
+            self.assertEqual(result.returncode,0,result.stdout.decode(errors='replace'))
+            result=subprocess.run([str(probe_exe)],capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr.decode(errors='replace'))
+            value=json.loads(result.stdout)
+            self.assertEqual(value['reads'],3)
+            self.assertEqual(value['rows'][0]['system_value'],.020)
+            self.assertTrue(value['rows'][0]['read_only'])
+            self.assertIn('error',value['rows'][1])
+            self.assertIn('error',value['rows'][2])
 
 
 class LauncherCloseTests(unittest.TestCase):
@@ -183,6 +215,13 @@ class RelayTests(unittest.TestCase):
                     result = client.post('/agent/jobs/'+job+'/result', headers=b, json={'ok':True,'value':{'artifacts':[meta]}})
                     self.assertEqual(result.status_code, 200)
                     self.assertEqual(client.get('/api/jobs/'+job, headers=a).json()['status'], 'done')
+                    params={'action':'inspect','file':'Actual.SLDPRT','dimension_names':['D1@草图1']}
+                    response=client.post('/api/jobs',headers=a,json={'operation':'sw_document','params':params})
+                    self.assertEqual(response.status_code,200,response.text)
+                    identity=response.json()['job_id']
+                    self.assertEqual(client.get('/api/jobs/'+identity,headers=a).json()['request'],params)
+                    queued=client.get('/agent/next',headers=b).json()['job']
+                    self.assertEqual(queued['params'],params)
             finally:
                 sys.modules.pop(spec.name, None)
 

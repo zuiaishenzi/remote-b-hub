@@ -20,6 +20,7 @@ public static class Program {
     [STAThread]
     public static int Main(string[] args) {
         Console.OutputEncoding = new UTF8Encoding(false);
+        Console.InputEncoding = new UTF8Encoding(false);
         AppDomain.CurrentDomain.AssemblyResolve += delegate(object sender, ResolveEventArgs ev) {
             var name = new AssemblyName(ev.Name).Name;
             if (!name.StartsWith("SolidWorks.Interop.", StringComparison.OrdinalIgnoreCase)) return null;
@@ -54,9 +55,20 @@ public static class Program {
         return path;
     }
     static object Run(Dictionary<string, object> req) {
-        if (req.Keys.Any(k => !new [] {"action", "file", "new_file", "root"}.Contains(k))) throw new Exception("Unexpected request fields");
+        if (req.Keys.Any(k => !new [] {"action", "file", "new_file", "root", "dimension_names"}.Contains(k))) throw new Exception("Unexpected request fields");
         string action = (string)req["action"];
         if (!new [] {"inspect", "open", "rebuild", "save_copy", "close"}.Contains(action)) throw new Exception("Unsupported action");
+        var dimensionNames = new List<string>();
+        if (req.ContainsKey("dimension_names")) {
+            var rawNames = req["dimension_names"] as System.Collections.IEnumerable;
+            if (action != "inspect" || rawNames == null || req["dimension_names"] is string) throw new Exception("Dimensions require inspect and an array");
+            foreach (object item in rawNames) {
+                string name = item as string;
+                if (name == null || !Regex.IsMatch(name, @"^[^@\x00-\x1f\\/:]{1,80}@[^@\x00-\x1f\\/:]{1,80}\z")) throw new Exception("Invalid dimension name");
+                dimensionNames.Add(name);
+            }
+            if (dimensionNames.Count < 1 || dimensionNames.Count > 20) throw new Exception("Expected 1-20 dimension names");
+        }
         ISldWorks sw = (ISldWorks)Marshal.GetActiveObject("SldWorks.Application");
         dynamic app = sw;
         string path = req.ContainsKey("file") ? Managed((string)req["root"], (string)req["file"], false) : null;
@@ -91,7 +103,28 @@ public static class Program {
             return Map("action", action, "saved", target, "bytes", new FileInfo(target).Length, "warnings", warnings,
                        "copy_only", true, "assembly_references_copied", false);
         }
-        return Inspect(doc);
+        var inspection = (Dictionary<string, object>)Inspect(doc);
+        if (dimensionNames.Count > 0) inspection["requested_dimensions"] = ReadDimensions(doc, dimensionNames);
+        return inspection;
+    }
+    // Reviewed AngelSix/SolidDNA concepts: explicit dimension identities, model
+    // type checks and separate inspection from edits. Uses B's local SW2023 PIA;
+    // no third-party ScriptRunner, DLLs or arbitrary expressions are loaded.
+    public static object ReadDimensions(dynamic doc, IEnumerable<string> names) {
+        var dimensions = new List<object>();
+        foreach (string name in names) {
+            try {
+                dynamic dimension = doc.Parameter(name);
+                if (dimension == null) throw new Exception("Dimension not found");
+                double value = (double)dimension.SystemValue;
+                if (Double.IsNaN(value) || Double.IsInfinity(value)) throw new Exception("Non-finite dimension");
+                dimensions.Add(Map("requested_name", name, "full_name", (string)dimension.FullName,
+                    "system_value", value, "system_units", "length=m; angle=rad", "read_only", true));
+            } catch (Exception ex) {
+                dimensions.Add(Map("requested_name", name, "error", ex.Message, "read_only", true));
+            }
+        }
+        return dimensions;
     }
     static object Inspect(dynamic doc) {
         var errors = new List<string>();

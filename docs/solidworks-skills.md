@@ -1,5 +1,8 @@
 # SolidWorks 2023 建模技能
 
+后续升级：已增加第三项 `solidworks-2023-interop` 技能及 A/B 更新按钮，
+详见 [AngelSix 集成与桌面更新](desktop-updates.md)。以下实机记录保留原测试日期和执行器版本。
+
 适用：SOLIDWORKS 2023，COM revision 31.x。此升级增加经过审阅的建模知识、确定性参数模板和任务复核，
 由 A 端 Codex 规划，B 端现有白名单执行器建模。没有嵌入另一个大模型或第三方任意宏执行器。
 

@@ -112,6 +112,7 @@ class Launcher:
                                 ("打开日志目录", lambda: os.startfile(str(self.directory)))):
             ttk.Button(controls, text=label, command=callback).pack(side="left", padx=(0, 6))
         ttk.Button(controls, text="最小化驻留", command=root.iconify).pack(side="left")
+        ttk.Button(controls, text="检查更新", command=self.open_update).pack(side="left", padx=6)
         self.status = tk.StringVar(value="准备就绪")
         ttk.Label(body, textvariable=self.status, wraplength=960).pack(anchor="w", pady=(8, 4))
         self.log_widget = scrolledtext.ScrolledText(body, state="disabled", font=("Consolas", 10), wrap="word")
@@ -129,6 +130,18 @@ class Launcher:
             if self.config["auto_start_agent"] and self.config["server_url"] and not self.config_error:
                 root.after(600, self.start)
         root.after(500, self.tick)
+
+    def open_update(self):
+        from update_window import UpdateWindow
+        return UpdateWindow(self.root, self.directory, 'b', self.prepare_update)
+
+    def prepare_update(self, plan):
+        from desktop_update import launch_helper
+        running = self.process is not None and self.process.poll() is None
+        if worker_running() and not running:
+            raise RuntimeError('另一个代理仍在完成任务，请待其停止后更新')
+        launch_helper(plan, [self.process.pid] if running else [], resume_agent=running)
+        self.quit()  # graceful stop; helper waits for both GUI and worker
 
     def values(self):
         config = dict(self.config)
@@ -304,7 +317,12 @@ def main():
     parser.add_argument("--data-dir")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--smoke-test", action="store_true")
+    parser.add_argument("--apply-update")
+    parser.add_argument("--resume-agent", action="store_true")
     args = parser.parse_args()
+    if args.apply_update:
+        from desktop_update import apply_update
+        return apply_update(args.apply_update)
     directory = data_directory(args.data_dir)
     directory.mkdir(parents=True, exist_ok=True)
     try:
@@ -338,6 +356,8 @@ def main():
                 return 0
         app = Launcher(root, directory, args.smoke_test)
         if args.smoke_test:
+            updater = app.open_update()
+            updater.window.withdraw()
             if app.config['server_url'] and app.config['token']:
                 # Build-only lifecycle probe: close while a fake NAS has the
                 # worker blocked in a request. Never save/login-register config.
@@ -357,13 +377,15 @@ def main():
                 root.after(1000, app.quit)
         else:
             root.deiconify()
+            if args.resume_agent and not app.config['auto_start_agent']:
+                root.after(600, app.start)
             if args.autostart:
                 root.after(100, root.iconify)
         root.mainloop()
         if mutex:
             win32api.CloseHandle(mutex)
         if args.smoke_test:
-            (directory / "gui-smoke.json").write_text('{"ok": true}', encoding="utf-8")
+            (directory / "gui-smoke.json").write_text('{"ok": true, "updater_support": true}', encoding="utf-8")
         return 0
     except Exception:
         trace = traceback.format_exc()

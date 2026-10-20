@@ -91,7 +91,7 @@ class SkillTests(unittest.TestCase):
 
     def test_skills_are_bundled_and_fingerprinted(self):
         result = skills.catalog()
-        self.assertEqual(len(result['skills']), 2)
+        self.assertEqual(len(result['skills']), 3)
         for skill in result['skills']:
             self.assertEqual(len(skill['sha256']), 64)
             self.assertIn('---', skill['instructions'])
@@ -124,7 +124,7 @@ class SkillTests(unittest.TestCase):
             'mcp.server.mcpserver.exceptions': exceptions}), patch.dict(os.environ, {
             'REMOTE_B_API_URL': 'http://localhost', 'REMOTE_B_CLIENT_TOKEN': 'x'*40}):
             spec.loader.exec_module(module)
-        self.assertEqual(len(registry['computer_b_modeling_skills']()['skills']), 2)
+        self.assertEqual(len(registry['computer_b_modeling_skills']()['skills']), 3)
         self.assertEqual(registry['computer_b_plan_part']('box', {}, 'MCP')['recipe']['name'], 'MCP')
         with patch.object(module, 'request', return_value=self.fixture()) as fetch:
             result = registry['computer_b_review_part']('cylinder', {'cx_mm': 20}, 'Review',

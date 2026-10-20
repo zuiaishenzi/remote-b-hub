@@ -32,6 +32,9 @@ def runtime_info():
 if __name__ == "__main__":
     info = source_info()
     info.update(mode="frozen", built_at=datetime.now(timezone.utc).isoformat())
+    import os
+    if os.environ.get('GITHUB_RUN_NUMBER') and os.environ.get('GITHUB_RUN_ATTEMPT'):
+        info['release_tag'] = 'desktop-' + os.environ['GITHUB_RUN_NUMBER'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
     repo = Path(__file__).resolve().parents[1]
     info["source_commit"] = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     info["working_tree_dirty"] = bool(subprocess.check_output(["git", "-C", str(repo), "status", "--porcelain"], text=True).strip())

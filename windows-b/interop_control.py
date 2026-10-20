@@ -60,7 +60,7 @@ def execute_document(params, config, directory):
     request = {**params, "root": str(Path(config["output_dir"]).absolute())}
     env = {**os.environ, "REMOTE_B_INTEROP_DIR": str(interop)}
     try:
-        completed = subprocess.run([str(executable)], input=json.dumps(request).encode("utf-8"),
+        completed = subprocess.run([str(executable)], input=json.dumps(request, ensure_ascii=False).encode("utf-8"),
                                    capture_output=True, env=env, timeout=120,
                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired as exc:

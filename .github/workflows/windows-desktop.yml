@@ -13,6 +13,8 @@ on:
       - 'tests/mcp_skills_smoke.py'
       - 'tests/frozen_desktop_smoke.py'
       - 'scripts/build-desktop.ps1'
+      - 'scripts/write-update-manifest.py'
+      - 'tests/frozen_update_smoke.py'
       - '.github/workflows/windows-desktop.yml'
 
 permissions:
@@ -36,6 +38,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = 'desktop-' + $env:GITHUB_RUN_NUMBER + '-' + $env:GITHUB_RUN_ATTEMPT
-          $notes = 'Reviewed SolidWorks 2023 project skills, strict modeling templates and real-job review in A desktop/MCP. No tokens or personal settings embedded. Source: ' + $env:GITHUB_SHA
-          gh release create $tag dist/RemoteBHub.exe dist/RemoteBClient.exe --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Remote B Hub $tag" --notes $notes --latest
+          & ./.venv-build/Scripts/python.exe scripts/write-update-manifest.py
+          if ($LASTEXITCODE -ne 0) { throw 'Update manifest failed' }
+          $notes = 'A/B in-app updates with SHA256 and rollback; reviewed AngelSix/SolidDNA SW2023 Interop skill and dimension inspection. No tokens/settings embedded. Source: ' + $env:GITHUB_SHA
+          gh release create $tag dist/RemoteBHub.exe dist/RemoteBClient.exe dist/update-manifest.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Remote B Hub $tag" --notes $notes --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

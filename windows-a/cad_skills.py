@@ -9,7 +9,7 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'windows-b'))
 from sw_schema import validate_recipe
 
-SKILLS = ('solidworks-2023-modeling', 'solidworks-2023-visual-check')
+SKILLS = ('solidworks-2023-modeling', 'solidworks-2023-visual-check', 'solidworks-2023-interop')
 DEFAULTS = {
     'box': {'length_mm': 100, 'width_mm': 60, 'height_mm': 10},
     'cylinder': {'radius_mm': 10, 'depth_mm': 10, 'cx_mm': 0, 'cy_mm': 0},
@@ -38,13 +38,18 @@ def catalog(skill=None):
     for name in ((skill,) if skill else SKILLS):
         path = library_root() / name / 'SKILL.md'
         content = path.read_text(encoding='utf-8')
-        entries.append({'name': name, 'sha256': hashlib.sha256(content.encode()).hexdigest(),
-                        'instructions': content})
+        references = path.parent / 'references'
+        entry = {'name': name, 'sha256': hashlib.sha256(content.encode()).hexdigest(), 'instructions': content,
+                 'references': [p.name for p in references.glob('*.md')]}
+        if skill:
+            entry['reference_contents'] = {p.name: p.read_text(encoding='utf-8') for p in references.glob('*.md')}
+        entries.append(entry)
     return {'target': 'SOLIDWORKS 2023 (revision 31.x)', 'skills': entries,
             'templates': DEFAULTS, 'validation': VALIDATION, 'strict_constraints': True,
             'unsupported': ['exact involute gears', 'circular patterns', 'gear mechanical mates'],
             'assembly_mates': 'experimental; require real acceptance',
-            'upstream_commit': '693386f5d76cca57ee3d80359c3b19128660366c'}
+            'upstream_commit': '693386f5d76cca57ee3d80359c3b19128660366c',
+            'angelsix_commit': '58787e2cefdcc03aebc15a51bd52ba151f3969d4'}
 
 
 def plan_part(template, parameters, name):

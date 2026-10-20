@@ -35,12 +35,14 @@ try {
     if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath "$testDirectory\gui-smoke.json")) { throw 'Frozen GUI smoke test failed' }
     & $pythonPath tests/frozen_desktop_smoke.py $appPath
     if ($LASTEXITCODE -ne 0) { throw 'Frozen worker HTTP smoke test failed' }
-    & $pythonPath -m PyInstaller --noconfirm --clean --onefile --windowed --name RemoteBClient --paths windows-a --paths windows-b --add-data '.agents/skills;skill-library' --hidden-import win32crypt windows-a/client_gui.py
+    & $pythonPath -m PyInstaller --noconfirm --clean --onefile --windowed --name RemoteBClient --paths windows-a --paths windows-b --add-data '.agents/skills;skill-library' --add-data 'build/runtime-info.json;.' --hidden-import win32crypt windows-a/client_gui.py
     if ($LASTEXITCODE -ne 0) { throw 'A client EXE build failed' }
     $clientPath = Join-Path $repoPath 'dist\RemoteBClient.exe'
     $clientTestDirectory = Join-Path $testDirectory 'a-client'
     $process = Start-Process -FilePath $clientPath -ArgumentList @('--smoke-test', '--data-dir', ('"' + $clientTestDirectory + '"')) -WindowStyle Hidden -Wait -PassThru
     if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath "$clientTestDirectory\client-smoke.json")) { throw 'A client EXE smoke test failed' }
+    & $pythonPath tests/frozen_update_smoke.py $clientPath $appPath
+    if ($LASTEXITCODE -ne 0) { throw 'Frozen in-app update smoke test failed' }
     Get-FileHash -Algorithm SHA256 -LiteralPath $appPath | Format-List
     Write-Host "Built and checked: $appPath"
 } finally {
