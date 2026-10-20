@@ -308,24 +308,30 @@ $env:REMOTE_B_PART_TEMPLATE = 'C:\实际模板路径\Part.prtdot'
 
 ## 8. 第四步：配置 Windows 电脑 A（Codex）
 
-电脑 A 运行 Codex CLI，并通过本地 stdio MCP 桥接程序把工具调用转发至 Linux 服务器的 HTTP API。安装 Python 3.11+，将仓库中的 `windows-a/mcp_bridge.py` 和 `windows-a/requirements.txt` 放入 `C:\RemoteB\`。
+电脑 A 运行 Codex CLI，并通过本地 stdio MCP 桥接程序把工具调用转发至 Linux 服务器的 HTTP API。
+安装 Python 3.11+ 和 Git，保留完整仓库目录；新版桥接还依赖建模技能模块与 `.agents/skills`，不要只复制一个 Python 文件。
 
 在 PowerShell 中执行：
 
 ```powershell
-cd C:\RemoteB
+git clone https://github.com/zuiaishenzi/remote-b-hub.git C:\RemoteB\remote-b-hub
+cd C:\RemoteB\remote-b-hub
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r windows-a/requirements.txt
 
 $env:REMOTE_B_API_URL = 'https://域名B'
 $env:REMOTE_B_CLIENT_TOKEN = Read-Host '请输入 Debian 中的 HUB_A_TOKEN'
 
-codex mcp add pc-b -- C:\RemoteB\.venv\Scripts\python.exe C:\RemoteB\mcp_bridge.py
+codex mcp add pc-b -- C:\RemoteB\remote-b-hub\.venv\Scripts\python.exe C:\RemoteB\remote-b-hub\windows-a\mcp_bridge.py
 codex mcp list
 codex
 ```
 
 **注意：**必须在设置环境变量的同一个 PowerShell 会话中启动 Codex，使它的 MCP 子进程能够读取上述变量。若从桌面快捷方式启动 Codex，可能无法继承终端中的环境变量，需要另外配置安全的持久化凭据注入方式。本项目当前针对 **Codex CLI**，尚未验证各桌面应用的 MCP 配置入口。
+
+已存在该仓库时使用 `git pull --ff-only`，不必重新克隆。MCP 注册方法参见
+[OpenAI 官方 MCP 文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)。
+项目技能加载位置参见 [OpenAI 官方技能文档](https://learn.chatgpt.com/docs/build-skills)。
 
 建议的第一条任务：
 

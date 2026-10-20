@@ -21,6 +21,10 @@
 
 ## A 端使用
 
+已发布测试版 [desktop-5-1](https://github.com/zuiaishenzi/remote-b-hub/releases/tag/desktop-5-1)。
+本次已更新 A 实际仓库 `C:\RemoteB\remote-b-hub`，并用该仓库的 `.venv` 和已注册桥接路径，
+通过真实 MCP stdio 再次读取和复核下面四个成功建模任务。既有会话需重新加载 MCP/技能后使用新增工具。
+
 1. 下载新版 [RemoteBClient.exe](https://github.com/zuiaishenzi/remote-b-hub/releases/latest)，保持原有 A Token/NAS/工作目录配置。
 2. 点击“建模技能”，选择模板，查看并修改毫米参数和全新文件名。先“生成并校验”，确认实际使用的默认值。
 3. “提交 B”会先检查 B 在线状态，再提交现有 `sw_recipe`；任务 ID 与日志显示在主窗口。
