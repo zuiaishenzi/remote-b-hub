@@ -23,6 +23,12 @@ curl --fail http://127.0.0.1:18765/health
 
 A 更新其 pc-b 注册所指向的仓库，重启 MCP 连接；`/mcp` 应能发现上述两个工具。A 桌面新增“SW 脚本”窗口，可直接编辑脚本、设置超时、提交任务，也可单独读取状态。
 
+MCP 启动优先使用同时设置的 `REMOTE_B_API_URL` 和 `REMOTE_B_CLIENT_TOKEN`。
+两者都未设置时，自动读取当前 Windows 用户的 `%LOCALAPPDATA%\RemoteBHubA\config.json`，
+使用 DPAPI 解密 A 客户端保存的 Token；不需要每次从 A 控制台启动 Codex。
+只设置其中一个变量会拒绝启动，避免连接地址与另一个配置的 Token 混用。
+因此 ChatGPT/Codex 桌面端重启后，也可以直接连接已保存配置的 pc-b。
+
 B 替换 `RemoteBHub.exe`。停止代理，勾选“允许 A 执行完整权限 SW Python 脚本（可修改文件；非沙箱）”，保存并启动代理。此选项默认关闭，原 Token、模板和输出目录保留。截图仍需单独勾选，不涉及实时视频配置。
 
 完整权限脚本可以访问 B 用户的文件和系统，不是安全沙箱；只向可信任的 A 开放现有 Token 通道。子进程不会主动接收 relay Token 环境变量，但这不是凭证隔离保证。

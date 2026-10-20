@@ -11,12 +11,8 @@ from relay_client import RelayClient
 from cad_skills import catalog, plan_part, review_part
 import uuid
 
-SERVER = os.environ['REMOTE_B_API_URL'].rstrip('/')
-TOKEN = os.environ['REMOTE_B_CLIENT_TOKEN']
-if len(TOKEN) < 32:
-    raise RuntimeError('REMOTE_B_CLIENT_TOKEN must be set')
-if not SERVER.startswith(('http://', 'https://')):
-    raise RuntimeError('Invalid REMOTE_B_API_URL')
+from mcp_connection import load_connection
+SERVER, TOKEN = load_connection()
 
 
 def request(method, path, body=None):
