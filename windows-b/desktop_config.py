@@ -14,6 +14,7 @@ DEFAULTS = {
     "auto_start_sw": True, "auto_start_agent": True, "auto_restart_agent": True,
     "start_at_login": False, "sw_start_timeout": 180,
     "interop_dir": "", "screenshots_enabled": False, "capture_on_error": True,
+    "allow_sw_scripts": False,
 }
 
 

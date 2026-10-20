@@ -1,5 +1,8 @@
 # Remote B Hub
 
+新增：[A 上的 Codex 分步控制 B 的 SW2023](docs/remote-sw-scripting.md)。
+提供当前模型状态读取和 B 本地启用的 Python COM 脚本通道，支持执行前后快照、日志、traceback 与超时暂停；A 桌面新增脚本窗口。NAS、A MCP 源码和 B 客户端均需更新，脚本权限默认关闭。
+
 启动 SW 报 `winmgmts` / “无效的语法”时，参见
 [SolidWorks 自动启动修复与更新步骤](docs/sw-startup-fix.md)。已移除启动检查对 WMI 的依赖，
 代理运行时也可点击“启动 SW”交由代理顺序处理；B 使用“检查更新”升级即可。

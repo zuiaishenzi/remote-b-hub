@@ -33,6 +33,8 @@ try {
     if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath "$testDirectory\self-test.json")) { throw 'Frozen EXE self-test failed' }
     $process = Start-Process -FilePath $appPath -ArgumentList @('--smoke-test', '--data-dir', ('"' + $testDirectory + '"')) -WindowStyle Hidden -Wait -PassThru
     if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath "$testDirectory\gui-smoke.json")) { throw 'Frozen GUI smoke test failed' }
+    & $pythonPath tests/frozen_sw_script_smoke.py $appPath
+    if ($LASTEXITCODE -ne 0) { throw 'Frozen SW script child protocol failed' }
     & $pythonPath tests/frozen_desktop_smoke.py $appPath
     if ($LASTEXITCODE -ne 0) { throw 'Frozen worker HTTP smoke test failed' }
     & $pythonPath -m PyInstaller --noconfirm --clean --onefile --windowed --name RemoteBClient --paths windows-a --paths windows-b --add-data '.agents/skills;skill-library' --add-data 'build/runtime-info.json;.' --hidden-import win32crypt windows-a/client_gui.py

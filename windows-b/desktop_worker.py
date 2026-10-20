@@ -14,7 +14,7 @@ from desktop_config import load_config, apply_environment, redact
 from desktop_version import runtime_info
 from windows_processes import process_session, processes_in_session
 
-CAD_OPERATIONS = {"solidworks_status", "create_blank_part", "create_box", "sw_recipe", "sw_document"}
+CAD_OPERATIONS = {"solidworks_status", "create_blank_part", "create_box", "sw_recipe", "sw_document", "sw_script"}
 
 
 def sw_status():
@@ -32,6 +32,9 @@ def sw_status():
 
 def ensure_solidworks(config, progress, stop_requested=lambda: False):
     """Only launch for a CAD task or an explicit local Start button."""
+    from sw_script import LOCK
+    if (Path(config.get("_directory", ".")) / LOCK).exists():
+        raise RuntimeError("CAD 状态待人工核对；请停止代理并在 B 端解除脚本暂停")
     try:
         return sw_status()
     except Exception as exc:
@@ -122,6 +125,7 @@ def run_worker(directory):
     import win32event
     directory = Path(directory)
     config = load_config(directory)
+    config["_directory"] = str(directory)
     apply_environment(config)
     # New GUI workers share one mutex even when started from different EXE versions.
     mutex = win32event.CreateMutex(None, False, "Local\\RemoteBHubWorker")
@@ -203,6 +207,11 @@ def run_worker(directory):
             try:
                 progress("received", f"收到任务 {job['operation']}")
                 status = None
+                if job["operation"] == "sw_script":
+                    from script_schema import validate_script_request
+                    validate_script_request(job["params"])
+                    if job["params"]["mode"] == "execute" and not config.get("allow_sw_scripts"):
+                        raise PermissionError("B 未启用完整权限 SW Python 脚本；请求未执行")
                 if job["operation"] in CAD_OPERATIONS:
                     status = ensure_solidworks(config, progress, stop_file.exists)
                 progress("executing", f"开始执行 {job['operation']}")
@@ -212,6 +221,9 @@ def run_worker(directory):
                         from interop_control import execute_document
                         progress("interop_control", "执行受限 C# / SOLIDWORKS Interop 文档操作")
                         result = execute_document(job["params"], config, directory)
+                    elif job["operation"] == "sw_script":
+                        from sw_script import execute_script
+                        result = execute_script(job["params"], config, directory, progress)
                     elif job["operation"] == "screenshot":
                         from screen_capture import capture_and_upload
                         result = {"artifacts": [capture_and_upload(job_id, config)]}
@@ -220,6 +232,10 @@ def run_worker(directory):
                     stream.flush()
                 result["agent_log_tail"] = history[-20:]
                 result["executor"] = version
+                if job["operation"] == "system_info":
+                    result["capabilities"] = {"sw_script": True, "allow_sw_scripts": bool(config.get("allow_sw_scripts")),
+                                              "screenshots_enabled": bool(config.get("screenshots_enabled")),
+                                              "cad_paused": (directory / "cad-state-unknown.json").exists()}
                 answer = {"ok": True, "value": result}
                 progress("completed", "任务执行成功，准备回传结果")
             except Exception as exc:
@@ -229,6 +245,8 @@ def run_worker(directory):
                           "diagnostics": {"stage": current_stage, "traceback": trace[-5000:],
                                           "operation": job["operation"], "log_tail": history[-20:],
                                           "executor": version}}
+                if job["operation"] == "sw_script" and hasattr(exc, 'report'):
+                    answer['diagnostics']['script'] = exc.report
                 if config.get("screenshots_enabled") and config.get("capture_on_error") and job["operation"] in CAD_OPERATIONS:
                     try:
                         from screen_capture import capture_and_upload

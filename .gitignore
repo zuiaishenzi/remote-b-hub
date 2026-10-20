@@ -24,6 +24,8 @@ venv/
 output/
 artifacts/
 interop-build/
+script-runs/
+cad-state-unknown.json
 *.image
 *.SLDPRT
 *.SLDASM

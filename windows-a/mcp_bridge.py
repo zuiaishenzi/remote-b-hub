@@ -176,6 +176,39 @@ def computer_b_sw_document(action: Literal['inspect', 'open', 'rebuild', 'save_c
 
 
 @mcp.tool()
+def computer_b_sw_session() -> dict:
+    """Read B's actual active SW document, modified flag and bounded feature list.
+    Requires upgraded NAS/B. Does not rebuild/save, no script opt-in needed.
+    Returns job_id: poll computer_b_job; no active document is a valid result.
+    """
+    return request('POST', '/api/jobs', {'operation': 'sw_script', 'params': {'mode': 'inspect'}})
+
+
+@mcp.tool()
+def computer_b_sw_script(code: str, timeout_seconds: int = 60) -> dict:
+    """Execute full-trust Python COM on B, ONLY when locally enabled on B.
+    Same Windows user rights, NOT a sandbox. Available variables: sw, model (may
+    be None), read(obj, member) for COM property/method reads, snapshot(), log(),
+    output_dir, part_template, assembly_template. Assign JSON dict to result.
+    API lengths use meters, angles radians. Never overwrite/close unsaved work
+    without authorization. Inspect first; execute one reviewable step; then
+    verify constraints, geometry, rebuild, saved paths/sizes explicitly.
+    No auto-save, no inferred engineering acceptance. Max 24KB UTF-8 Python.
+    Poll job for before/after snapshots, log and full failure traceback.
+    Timeout pauses all subsequent CAD until local B acknowledgement. Never
+    retry unchanged errors; do not call known broken interfaces repeatedly.
+    Screenshots remain a separate opt-in tool. No generic desktop input here.
+    """
+    from script_schema import validate_script_request
+    params = {'mode': 'execute', 'code': code, 'timeout_seconds': timeout_seconds}
+    try:
+        validate_script_request(params)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return request('POST', '/api/jobs', {'operation': 'sw_script', 'params': params})
+
+
+@mcp.tool()
 def computer_b_screenshot() -> dict:
     """Queue a SOLIDWORKS-window screenshot. Requires local opt-in on B and NAS attachment API.
     Returns job_id; poll the job, then list/download its artifacts. Never captures full desktop.

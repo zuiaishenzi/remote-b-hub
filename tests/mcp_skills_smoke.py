@@ -20,6 +20,9 @@ async def main():
         listed = await client.list_tools()
         names = {tool.name for tool in listed.tools}
         assert {'computer_b_modeling_skills', 'computer_b_plan_part', 'computer_b_review_part'} <= names
+        assert {'computer_b_sw_session', 'computer_b_sw_script'} <= names
+        invalid_script = await client.call_tool('computer_b_sw_script', {'code': 'if'})
+        assert invalid_script.is_error  # Validation must happen before any network request.
         document_tool=next(tool for tool in listed.tools if tool.name=='computer_b_sw_document')
         assert 'dimension_names' in document_tool.input_schema['properties']
         result = await client.call_tool('computer_b_modeling_skills', {})

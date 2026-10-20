@@ -1,4 +1,4 @@
-"""A-side local configuration/diagnostic console; never runs remote arbitrary commands."""
+"""A-side configuration, diagnostics and explicitly enabled remote SW scripts."""
 import argparse
 import json
 import os
@@ -46,6 +46,7 @@ class ClientWindow:
         buttons.pack(fill='x', pady=8)
         for label, callback in (('保存配置', self.save), ('启动 Codex', self.start_codex),
                                 ('建模技能', self.open_skills),
+                                ('SW 脚本', self.open_script),
                                 ('检查更新', self.open_update),
                                 ('检查 B 在线状态', lambda: self.call('status', lambda c: c.request('GET', '/api/status'))),
                                 ('请求 SW 截图', lambda: self.call('submitted', lambda c: c.request('POST', '/api/jobs', {'operation': 'screenshot'})))):
@@ -66,6 +67,10 @@ class ClientWindow:
         self.output.pack(fill='both', expand=True, pady=8)
         ttk.Label(panel, text='截图通过 A Token 下载到本机；实时视频/远控需另行配置。启动 Codex 需已有 CLI 与 pc-b 注册。').pack(anchor='w')
         root.after(200, self.tick)
+
+    def open_script(self):
+        from script_window import ScriptWindow
+        return ScriptWindow(self)
 
     def open_skills(self):
         from cad_skill_window import SkillWindow
@@ -205,6 +210,8 @@ def main():
             skill_window.plan()
             update_window = client_window.open_update()
             update_window.window.withdraw()
+            script_window = client_window.open_script()
+            script_window.window.withdraw()
             install_project_skills(directory)
             from desktop_config import protect_token, unprotect_token
             assert unprotect_token(protect_token('a-side-build-test')) == 'a-side-build-test'

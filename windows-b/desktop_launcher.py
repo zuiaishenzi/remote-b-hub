@@ -106,6 +106,12 @@ class Launcher:
                            ("capture_on_error", "CAD 失败时自动截图；截图失败保留原错误")):
             self.variables[key] = tk.BooleanVar(value=self.config[key])
             ttk.Checkbutton(capture_options, text=label, variable=self.variables[key]).pack(side="left", padx=(0, 12))
+        scripts = ttk.Frame(body)
+        scripts.pack(fill="x", pady=(0, 6))
+        self.variables["allow_sw_scripts"] = tk.BooleanVar(value=self.config["allow_sw_scripts"])
+        ttk.Checkbutton(scripts, text="允许 A 执行完整权限 SW Python 脚本（可修改文件；非沙箱）",
+                        variable=self.variables["allow_sw_scripts"]).pack(side="left")
+        ttk.Button(scripts, text="核对 CAD 状态后解除脚本暂停", command=self.clear_script_pause).pack(side="left", padx=8)
         controls.pack(fill="x", pady=4)
         for label, callback in (("保存设置", self.save), ("检查状态", self.check), ("启动 SOLIDWORKS", self.start_sw),
                                 ("启动代理", self.start), ("停止代理（完成当前任务后）", self.stop),
@@ -130,6 +136,25 @@ class Launcher:
             if self.config["auto_start_agent"] and self.config["server_url"] and not self.config_error:
                 root.after(600, self.start)
         root.after(500, self.tick)
+
+    def clear_script_pause(self):
+        from tkinter import messagebox
+        from sw_script import LOCK
+        if worker_running():
+            messagebox.showinfo("请先停止代理", "等待代理完成当前任务并停止后再操作。", parent=self.root)
+            return
+        path = self.directory / LOCK
+        if not path.exists():
+            self.message("没有脚本暂停标记。")
+            return
+        info = json.loads(path.read_text(encoding="utf-8"))
+        from windows_processes import process_snapshot
+        if any(pid == info.get("pid") for pid, name in process_snapshot()):
+            messagebox.showinfo("脚本仍在运行", "请先检查 B 的 SW 窗口；脚本进程尚未退出，不能解除暂停。", parent=self.root)
+            return
+        if messagebox.askyesno("确认 CAD 状态", "已检查 SW 无运行中的命令、模型状态明确？解除后仍不得无修改重复失败脚本。", parent=self.root):
+            path.unlink()
+            self.message("已解除 CAD 暂停；请先读取模型状态，再继续编辑。")
 
     def open_update(self):
         from update_window import UpdateWindow
@@ -315,6 +340,7 @@ class Launcher:
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--run-sw-script")
     parser.add_argument("--worker", action="store_true")
     parser.add_argument("--autostart", action="store_true")
     parser.add_argument("--data-dir")
@@ -323,6 +349,9 @@ def main():
     parser.add_argument("--apply-update")
     parser.add_argument("--resume-agent", action="store_true")
     args = parser.parse_args()
+    if args.run_sw_script:
+        from sw_script import run_payload
+        return run_payload(args.run_sw_script)
     if args.apply_update:
         from desktop_update import apply_update
         return apply_update(args.apply_update)
@@ -336,7 +365,9 @@ def main():
             assert unprotect_token(protect_token("self-test-token")) == "self-test-token"
             from desktop_version import runtime_info
             assert len(runtime_info()["executor_sha256"]) == 64
-            import interop_control, screen_capture
+            import interop_control, screen_capture, sw_script
+            from script_schema import validate_script_request
+            assert len(validate_script_request({"mode": "inspect"})) == 64
             from windows_processes import process_snapshot, process_session
             assert any(pid == os.getpid() for pid, name in process_snapshot())
             assert process_session() >= 0

@@ -97,4 +97,16 @@ with tempfile.TemporaryDirectory() as directory:
     assert newer.json()['job_id'] != job
     same_name = client.post(f'/api/jobs/{job}/revise', headers=ah, json={'recipe':rectangle})
     assert same_name.status_code == 400
+    script = {'operation': 'sw_script', 'params': {'mode': 'execute',
+               'code': 'result = {"fixture": True}', 'timeout_seconds': 60}}
+    assert client.post('/api/jobs', headers=bh, json=script).status_code == 401
+    created = client.post('/api/jobs', headers=ah, json=script)
+    assert created.status_code == 200, created.text
+    stored = client.get('/api/jobs/' + created.json()['job_id'], headers=ah).json()
+    assert stored['request'] == script['params']
+    assert 'sw_script' in client.get('/health').json()['capabilities']
+    script['params']['code'] = 'if'
+    assert client.post('/api/jobs', headers=ah, json=script).status_code == 400
+    assert client.post('/api/jobs', headers=ah, json={'operation': 'sw_script',
+        'params': {'mode': 'inspect'}}).status_code == 200
     print('PASS: auth, queue, recipe revisions, progress and structured diagnostics')

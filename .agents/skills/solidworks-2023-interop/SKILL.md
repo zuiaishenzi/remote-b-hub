@@ -1,6 +1,6 @@
 ---
 name: solidworks-2023-interop
-description: Inspect named SolidWorks 2023 model dimensions and document geometry through remote-b-hub's fixed C# Interop controller. Use for checking real dimension values, feature trees and C# API compatibility; not arbitrary script execution.
+description: Inspect and edit SolidWorks 2023 models through remote-b-hub using fixed C# inspection or the locally enabled Python COM script channel. Use for named dimensions, feature trees and stepwise remote CAD editing.
 ---
 
 # SolidWorks 2023 Interop inspection
@@ -37,3 +37,28 @@ Model this knowledge as API guidance, not proof of an added revolve/fillet/patte
 The new named-dimension path has schema, C# compile and controlled test-double coverage;
 real SW2023 COM acceptance must be recorded after upgraded NAS and B are running.
 Do not repeat a COM defect unchanged; preserve job ID and complete traceback.
+
+## Stepwise Python COM editing
+
+For edits outside recipe capabilities, use `computer_b_sw_session` and poll its job to identify
+the actual active document. Check `computer_b_system_info` capabilities: B must have the new
+executor and `allow_sw_scripts=true`. If NAS rejects `sw_script`, upgrade NAS before submitting edits.
+
+`computer_b_sw_script(code, timeout_seconds=60)` runs full-trust Python with B user's rights;
+the B operator enables this separately. It is not a sandbox or a read-only API.
+The script gets `sw`, active `model` (possibly None), `read(obj, member)` for callable/property COM
+differences, `snapshot()`, `log()`, `output_dir`, `part_template`, `assembly_template`.
+Assign a JSON dictionary to `result`; prefer small, reviewable edits followed by explicit checks.
+Use existing user authorization for editing, but do not overwrite files or discard unsaved work
+outside that scope. No automatic save is performed. SW lengths are meters and angles radians.
+
+For a first connection test, submit only `result = snapshot()`; verify the real job before editing.
+Read before/after snapshots, log, traceback and script SHA256 from the actual result. A done job
+proves script execution only. Separately measure geometry, check constraints/rebuild, and record
+the actual saved path and byte size. Use fixed C# inspection for assembly/component/body details
+and named dimension values, plus opt-in screenshots when needed.
+
+On timeout or missing helper response, B pauses subsequent CAD tasks and keeps SW alive.
+Do not retry: the COM call may still be running. The B operator inspects SW, stops the agent,
+waits for the helper to exit and uses the local acknowledgement button before continuing.
+The script channel adds API flexibility; it does not prove gear accuracy or provide mouse/keyboard control.
