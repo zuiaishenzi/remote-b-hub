@@ -148,8 +148,8 @@ class Launcher:
             self.message("没有脚本暂停标记。")
             return
         info = json.loads(path.read_text(encoding="utf-8"))
-        from windows_processes import process_snapshot
-        if any(pid == info.get("pid") for pid, name in process_snapshot()):
+        from windows_processes import process_family
+        if info.get("pid") and process_family(info["pid"], exclude_names={"sldworks.exe"}):
             messagebox.showinfo("脚本仍在运行", "请先检查 B 的 SW 窗口；脚本进程尚未退出，不能解除暂停。", parent=self.root)
             return
         if messagebox.askyesno("确认 CAD 状态", "已检查 SW 无运行中的命令、模型状态明确？解除后仍不得无修改重复失败脚本。", parent=self.root):
@@ -340,6 +340,7 @@ class Launcher:
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--start-sw-helper")
     parser.add_argument("--run-sw-script")
     parser.add_argument("--worker", action="store_true")
     parser.add_argument("--autostart", action="store_true")
@@ -349,6 +350,9 @@ def main():
     parser.add_argument("--apply-update")
     parser.add_argument("--resume-agent", action="store_true")
     args = parser.parse_args()
+    if args.start_sw_helper:
+        from cad_control import start_helper
+        return start_helper(args.start_sw_helper)
     if args.run_sw_script:
         from sw_script import run_payload
         return run_payload(args.run_sw_script)
@@ -365,7 +369,7 @@ def main():
             assert unprotect_token(protect_token("self-test-token")) == "self-test-token"
             from desktop_version import runtime_info
             assert len(runtime_info()["executor_sha256"]) == 64
-            import interop_control, screen_capture, sw_script
+            import interop_control, screen_capture, sw_script, cad_control
             from script_schema import validate_script_request
             assert len(validate_script_request({"mode": "inspect"})) == 64
             from windows_processes import process_snapshot, process_session

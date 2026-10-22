@@ -45,5 +45,11 @@ class NativeProcessTests(unittest.TestCase):
              patch.object(native,'process_session',side_effect=lambda pid:{1:4,2:5}[pid]):
             self.assertEqual(native.processes_in_session('SLDWORKS.exe',4),[1])
 
+    def test_orphan_onefile_child_blocks_but_sw_branch_is_excluded(self):
+        with patch.object(native,'process_snapshot',return_value=[
+                (12,'RemoteBHub.exe',11),(13,'python.exe',12),
+                (14,'SLDWORKS.exe',11),(15,'SWBackground.exe',14),(20,'other.exe',1)]):
+            self.assertEqual(native.process_family(11,{'sldworks.exe'}),[12,13])
+
 
 if __name__=='__main__': unittest.main()

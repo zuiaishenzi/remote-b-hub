@@ -109,4 +109,13 @@ with tempfile.TemporaryDirectory() as directory:
     assert client.post('/api/jobs', headers=ah, json=script).status_code == 400
     assert client.post('/api/jobs', headers=ah, json={'operation': 'sw_script',
         'params': {'mode': 'inspect'}}).status_code == 200
+    recovery = {'operation':'cad_control','params':{'action':'resume','pause_id':'a'*64,'acknowledge_state':True}}
+    assert client.post('/api/jobs',headers=bh,json=recovery).status_code == 401
+    response=client.post('/api/jobs',headers=ah,json=recovery)
+    assert response.status_code == 200,response.text
+    assert client.get('/api/jobs/'+response.json()['job_id'],headers=ah).json()['request']==recovery['params']
+    recovery['params']['acknowledge_state']=False
+    assert client.post('/api/jobs',headers=ah,json=recovery).status_code == 400
+    assert client.post('/api/jobs',headers=ah,json={'operation':'cad_control','params':{'action':'start','force':True}}).status_code==400
+    assert 'cad_control' in client.get('/health').json()['capabilities']
     print('PASS: auth, queue, recipe revisions, progress and structured diagnostics')

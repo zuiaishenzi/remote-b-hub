@@ -172,6 +172,44 @@ def computer_b_sw_document(action: Literal['inspect', 'open', 'rebuild', 'save_c
 
 
 @mcp.tool()
+def computer_b_cad_state() -> dict:
+    """Read pause ID and old helper process state without calling SW COM.
+    Works while CAD is paused. Poll computer_b_job. can_resume only proves the
+    old caller exited, not that the model is valid or SW commands have finished.
+    """
+    return request('POST', '/api/jobs', {'operation': 'cad_control', 'params': {'action': 'state'}})
+
+
+@mcp.tool()
+def computer_b_start_solidworks() -> dict:
+    """Explicitly start SW in B's logged-in session, even if auto-start is off.
+    B agent must already be online. Does not start an offline agent, kill SW,
+    close documents or bypass a CAD pause. Existing SW instance is reused.
+    Runs in a supervised helper; timeout leaves CAD paused and returns caller PID.
+    Returns job ID; poll computer_b_job and confirm connected/revision.
+    """
+    return request('POST', '/api/jobs', {'operation': 'cad_control', 'params': {'action': 'start'}})
+
+
+@mcp.tool()
+def computer_b_resume_cad(pause_id: str, acknowledge_state: bool) -> dict:
+    """Recover the EXACT current pause from A after inspecting the failure, CAD
+    state and available screenshot. User has authorized A recovery. B requires
+    trusted script control enabled. Never force unlock a live/unknown caller.
+    Pass pause_id from computer_b_cad_state and acknowledge_state=true after
+    assessment; stale IDs are rejected. Does not retry the failed job or save
+    a model. Poll job; then inspect SW session before further editing.
+    """
+    from cad_control_schema import validate_cad_control
+    params = {'action': 'resume', 'pause_id': pause_id, 'acknowledge_state': acknowledge_state}
+    try:
+        validate_cad_control(params)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return request('POST', '/api/jobs', {'operation': 'cad_control', 'params': params})
+
+
+@mcp.tool()
 def computer_b_sw_session() -> dict:
     """Read B's actual active SW document, modified flag and bounded feature list.
     Requires upgraded NAS/B. Does not rebuild/save, no script opt-in needed.
@@ -191,7 +229,7 @@ def computer_b_sw_script(code: str, timeout_seconds: int = 60) -> dict:
     verify constraints, geometry, rebuild, saved paths/sizes explicitly.
     No auto-save, no inferred engineering acceptance. Max 24KB UTF-8 Python.
     Poll job for before/after snapshots, log and full failure traceback.
-    Timeout pauses all subsequent CAD until local B acknowledgement. Never
+    Timeout pauses subsequent CAD; use CAD state and safe A recovery after caller exits. Never
     retry unchanged errors; do not call known broken interfaces repeatedly.
     Screenshots remain a separate opt-in tool. No generic desktop input here.
     """

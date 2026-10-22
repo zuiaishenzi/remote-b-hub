@@ -57,6 +57,7 @@ class ClientWindow:
         ttk.Entry(row, textvariable=self.job_id, width=44).pack(side='left', padx=6)
         ttk.Button(row, text='读取任务/错误', command=self.read_job).pack(side='left', padx=6)
         ttk.Button(row, text='列出截图附件', command=self.list_images).pack(side='left')
+        ttk.Button(row, text='CAD 管理', command=self.open_cad_control).pack(side='left', padx=6)
         row = ttk.Frame(panel)
         row.pack(fill='x', pady=6)
         ttk.Label(row, text='截图附件').pack(side='left')
@@ -67,6 +68,10 @@ class ClientWindow:
         self.output.pack(fill='both', expand=True, pady=8)
         ttk.Label(panel, text='截图通过 A Token 下载到本机；实时视频/远控需另行配置。启动 Codex 需已有 CLI 与 pc-b 注册。').pack(anchor='w')
         root.after(200, self.tick)
+
+    def open_cad_control(self):
+        from cad_control_window import CadControlWindow
+        return CadControlWindow(self)
 
     def open_script(self):
         from script_window import ScriptWindow
@@ -212,6 +217,8 @@ def main():
             update_window.window.withdraw()
             script_window = client_window.open_script()
             script_window.window.withdraw()
+            control_window = client_window.open_cad_control()
+            control_window.window.withdraw()
             install_project_skills(directory)
             from desktop_config import protect_token, unprotect_token
             assert unprotect_token(protect_token('a-side-build-test')) == 'a-side-build-test'

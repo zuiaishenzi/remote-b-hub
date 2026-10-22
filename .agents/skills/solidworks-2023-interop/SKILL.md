@@ -59,6 +59,20 @@ the actual saved path and byte size. Use fixed C# inspection for assembly/compon
 and named dimension values, plus opt-in screenshots when needed.
 
 On timeout or missing helper response, B pauses subsequent CAD tasks and keeps SW alive.
-Do not retry: the COM call may still be running. The B operator inspects SW, stops the agent,
-waits for the helper to exit and uses the local acknowledgement button before continuing.
+Do not retry: the COM call may still be running. Use computer_b_cad_state to inspect the current pause and helper PID. Once the caller
+exited and the current state is assessed, A can use computer_b_resume_cad with that pause_id
+and acknowledge_state=true; no B-local stop/click is required. Live/unknown callers and stale
+pause IDs must not be bypassed. B-local recovery remains available.
 The script channel adds API flexibility; it does not prove gear accuracy or provide mouse/keyboard control.
+
+
+## A-side lifecycle tools
+
+`computer_b_start_solidworks` explicitly starts/connects SW in B's existing login session,
+even when auto-start is off. B agent must already be online and CAD must not be paused.
+It does not close documents or terminate processes. Poll the real job for connected/revision.
+
+`computer_b_cad_state` works while paused without SW COM. Read the original failure and
+available screenshot, check helper_running/can_resume, then recover only the exact pause_id
+with `computer_b_resume_cad(pause_id, acknowledge_state=true)` when A recovery is authorized.
+After recovery inspect the SW session before edits; never retry the old script unchanged.

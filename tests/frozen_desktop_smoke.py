@@ -1,5 +1,6 @@
 """Exercise the actual EXE worker against a local fake NAS; never starts SW."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -17,7 +18,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix="remote-b-frozen-") as directory:
         root = Path(directory)
         results, stages = [], []
-        operations = ["ping", "system_info"]
+        marker = json.dumps({'pid': 2147483000, 'audit': 'isolated-recovery-fixture'}).encode()
+        (root/'cad-state-unknown.json').write_bytes(marker)
+        pause_id = hashlib.sha256(marker).hexdigest()
+        operations = [('ping', {}), ('system_info', {}),
+                      ('cad_control', {'action':'state'}),
+                      ('cad_control', {'action':'resume','pause_id':pause_id,'acknowledge_state':True}),
+                      ('cad_control', {'action':'state'})]
         token = "local-smoke-not-a-real-token-" * 2
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
@@ -32,7 +39,8 @@ def main():
             def do_GET(self):
                 assert self.headers["Authorization"] == "Bearer " + token
                 index = len(results)
-                self.respond({"job": {"job_id": f"smoke-{index}", "operation": operations[index], "params": {}}})
+                operation,params=operations[index]
+                self.respond({"job": {"job_id": f"smoke-{index}", "operation": operation, "params": params}})
 
             def do_POST(self):
                 assert self.headers["Authorization"] == "Bearer " + token
@@ -41,13 +49,14 @@ def main():
                     stages.append(body["stage"])
                 elif self.path.endswith("/result"):
                     results.append(body)
-                    if len(results) == 2:
+                    if len(results) == len(operations):
                         (root / "stop.request").touch()
                 self.respond({"saved": True})
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         try:
             save_config(root, {**DEFAULTS, "token": token,
+                              "allow_sw_scripts": True,
                               "server_url": f"http://127.0.0.1:{server.server_port}",
                               "output_dir": str(root / "output")})
             threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -58,16 +67,20 @@ def main():
             if process.returncode != 0:
                 error_file = root / "startup-error.log"
                 raise RuntimeError(error_file.read_text(encoding="utf-8") if error_file.exists() else "Worker failed")
-            assert len(results) == 2 and all(item["ok"] for item in results), results
+            assert len(results) == len(operations) and all(item["ok"] for item in results), results
             assert results[0]["value"]["message"] == "pong from PC B"
             assert results[1]["value"]["host"]
+            assert results[2]['value']['paused'] and results[2]['value']['can_resume']
+            assert results[3]['value']['resumed']
+            assert results[4]['value']['paused'] is False
+            assert not (root/'cad-state-unknown.json').exists()
             for result in results:
                 assert len(result["value"]["executor"]["executor_sha256"]) == 64
                 assert result["value"]["executor"]["mode"] == "frozen"
             assert {"received", "executing", "completed"}.issubset(stages), stages
             assert "starting_solidworks" not in stages
             assert token not in (root / "agent.log").read_text(encoding="utf-8")
-            print("Frozen EXE worker HTTP/DPAPI/logging smoke test passed (ping + system_info; no SW started)")
+            print("Frozen worker HTTP/DPAPI/CAD state + safe recovery + audit passed; no SW started")
         finally:
             server.shutdown()
             server.server_close()

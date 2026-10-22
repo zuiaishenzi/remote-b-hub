@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from sw_schema import validate_recipe
 from control_schema import validate_document_request
 from script_schema import validate_script_request
+from cad_control_schema import validate_cad_control
 from artifact_store import ArtifactStore, MAX_IMAGE_BYTES
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,7 +31,7 @@ if len(A_TOKEN) < 32 or len(B_TOKEN) < 32 or secrets.compare_digest(A_TOKEN, B_T
     raise RuntimeError('Set independent HUB_A_TOKEN and HUB_B_TOKEN (minimum 32 characters each)')
 
 VALID_OPERATIONS = {'ping', 'system_info', 'solidworks_status', 'create_blank_part', 'create_box', 'sw_recipe',
-                    'sw_document', 'screenshot', 'sw_script'}
+                    'sw_document', 'screenshot', 'sw_script', 'cad_control'}
 
 
 def init_db():
@@ -124,7 +125,7 @@ artifacts = ArtifactStore(DB_PATH, os.environ.get('HUB_ARTIFACT_DIR', str(DB_PAT
 @app.get('/health')
 def health():
     return {'status': 'ok', 'service': 'pc-b-relay', 'protocol_version': 2,
-            'capabilities': ['sw_document', 'screenshot', 'artifacts', 'sw_script']}
+            'capabilities': ['sw_document', 'screenshot', 'artifacts', 'sw_script', 'cad_control']}
 
 
 @app.get('/api/status')
@@ -180,6 +181,11 @@ def submit_job(payload: JobRequest, authorization: str | None = Header(default=N
             validate_script_request(payload.params)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+    elif payload.operation == 'cad_control':
+        try:
+            validate_cad_control(payload.params)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     elif payload.params:
         raise HTTPException(400, 'This operation does not accept params')
     job_id = str(uuid.uuid4())
@@ -204,7 +210,7 @@ def job_status(job_id: str, authorization: str | None = Header(default=None)):
     return {'job_id': row['id'], 'operation': row['operation'], 'status': row['status'],
             'result': json.loads(row['result']) if row['result'] else None,
             'progress': json.loads(row['progress']) if row['progress'] else None,
-            'request': stored_params if row['operation'] in ('sw_recipe', 'sw_document', 'screenshot', 'sw_script') else None,
+            'request': stored_params if row['operation'] in ('sw_recipe', 'sw_document', 'screenshot', 'sw_script', 'cad_control') else None,
             'created': row['created'], 'updated': row['updated']}
 
 

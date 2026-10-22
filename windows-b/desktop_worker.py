@@ -34,7 +34,7 @@ def ensure_solidworks(config, progress, stop_requested=lambda: False):
     """Only launch for a CAD task or an explicit local Start button."""
     from sw_script import LOCK
     if (Path(config.get("_directory", ".")) / LOCK).exists():
-        raise RuntimeError("CAD 状态待人工核对；请停止代理并在 B 端解除脚本暂停")
+        raise RuntimeError("CAD 状态待人工核对；请使用 A 的 CAD 状态/安全恢复工具，或在 B 本地核对后解除暂停")
     try:
         return sw_status()
     except Exception as exc:
@@ -224,6 +224,9 @@ def run_worker(directory):
                     elif job["operation"] == "sw_script":
                         from sw_script import execute_script
                         result = execute_script(job["params"], config, directory, progress)
+                    elif job["operation"] == "cad_control":
+                        from cad_control import execute_control
+                        result = execute_control(job["params"], config, directory, progress, stop_file.exists)
                     elif job["operation"] == "screenshot":
                         from screen_capture import capture_and_upload
                         result = {"artifacts": [capture_and_upload(job_id, config)]}
@@ -233,7 +236,7 @@ def run_worker(directory):
                 result["agent_log_tail"] = history[-20:]
                 result["executor"] = version
                 if job["operation"] == "system_info":
-                    result["capabilities"] = {"sw_script": True, "allow_sw_scripts": bool(config.get("allow_sw_scripts")),
+                    result["capabilities"] = {"sw_script": True, "cad_control": True, "allow_sw_scripts": bool(config.get("allow_sw_scripts")),
                                               "screenshots_enabled": bool(config.get("screenshots_enabled")),
                                               "cad_paused": (directory / "cad-state-unknown.json").exists()}
                 answer = {"ok": True, "value": result}

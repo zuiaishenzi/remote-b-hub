@@ -123,7 +123,7 @@ def execute_script(params, config, directory, progress):
         raise PermissionError('B 未启用“允许 A 执行完整权限 SW Python 脚本”；请求未执行')
     directory = Path(directory)
     if (directory / LOCK).exists():
-        raise RuntimeError('CAD paused; local acknowledgement required')
+        raise RuntimeError('CAD paused; inspect CAD state and use safe A recovery or local acknowledgement')
     folder = directory / 'script-runs' / uuid.uuid4().hex
     folder.mkdir(parents=True)
     (folder / 'request.json').write_text(json.dumps(params, ensure_ascii=False), encoding='utf-8')
@@ -155,7 +155,7 @@ def execute_script(params, config, directory, progress):
         (directory / LOCK).write_text(json.dumps({'pid': child.pid, 'audit': str(folder),
                                                  'script_sha256': digest}), encoding='utf-8')
         raise RuntimeError('SW script timed out; child/SW may still be running. CAD paused. '
-                           'Do not retry. Inspect B, stop agent, then locally acknowledge state.')
+                           'Do not retry. Inspect CAD state; use A safe recovery after caller exits, or acknowledge locally on B.')
     response = folder / 'response.json'
     if child.returncode or not response.is_file():
         (directory / LOCK).write_text(json.dumps({'pid': child.pid, 'audit': str(folder)}), encoding='utf-8')

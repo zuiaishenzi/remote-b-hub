@@ -27,7 +27,7 @@ def kernel():
     return api
 
 
-def process_snapshot():
+def process_snapshot(include_parent=False):
     api = kernel()
     handle = api.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS only
     if handle == ctypes.c_void_p(-1).value:
@@ -38,7 +38,8 @@ def process_snapshot():
         found = api.Process32FirstW(handle, ctypes.byref(entry))
         result = []
         while found:
-            result.append((entry.th32ProcessID, entry.szExeFile))
+            item = (entry.th32ProcessID, entry.szExeFile)
+            result.append((*item, entry.th32ParentProcessID) if include_parent else item)
             found = api.Process32NextW(handle, ctypes.byref(entry))
         error = ctypes.get_last_error()
         if error != 18:  # ERROR_NO_MORE_FILES is the only valid end of enumeration
@@ -58,3 +59,18 @@ def process_session(pid=None):
 def processes_in_session(executable_name, session):
     return [pid for pid, name in process_snapshot()
             if name.casefold() == executable_name.casefold() and process_session(pid) == session]
+
+
+def process_family(pid, exclude_names=()):
+    """Include surviving direct descendants even if a onefile bootloader exited."""
+    rows = process_snapshot(include_parent=True)
+    excluded = {name.casefold() for name in exclude_names}
+    family = {pid}
+    changed = True
+    while changed:
+        changed = False
+        for child, name, parent in rows:
+            if parent in family and child not in family and name.casefold() not in excluded:
+                family.add(child)
+                changed = True
+    return sorted(child for child, name, parent in rows if child in family and name.casefold() not in excluded)

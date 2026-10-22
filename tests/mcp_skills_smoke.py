@@ -20,7 +20,11 @@ async def main():
         listed = await client.list_tools()
         names = {tool.name for tool in listed.tools}
         assert {'computer_b_modeling_skills', 'computer_b_plan_part', 'computer_b_review_part'} <= names
-        assert {'computer_b_sw_session', 'computer_b_sw_script'} <= names
+        assert {'computer_b_sw_session', 'computer_b_sw_script', 'computer_b_cad_state',
+                'computer_b_resume_cad', 'computer_b_start_solidworks'} <= names
+        invalid_recovery = await client.call_tool('computer_b_resume_cad',
+            {'pause_id': 'old', 'acknowledge_state': True})
+        assert invalid_recovery.is_error
         invalid_script = await client.call_tool('computer_b_sw_script', {'code': 'if'})
         assert invalid_script.is_error  # Validation must happen before any network request.
         document_tool=next(tool for tool in listed.tools if tool.name=='computer_b_sw_document')

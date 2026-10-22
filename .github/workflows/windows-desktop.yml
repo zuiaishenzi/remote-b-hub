@@ -41,6 +41,6 @@ jobs:
           $tag = 'desktop-' + $env:GITHUB_RUN_NUMBER + '-' + $env:GITHUB_RUN_ATTEMPT
           & ./.venv-build/Scripts/python.exe scripts/write-update-manifest.py
           if ($LASTEXITCODE -ne 0) { throw 'Update manifest failed' }
-          $notes = 'Remote SW2023 session inspection and opt-in full-trust Python COM scripts, A script editor, audit logs and CAD pause on timeout. NAS and A MCP source must also update; B script permission defaults off. No tokens/settings embedded. Source: ' + $env:GITHUB_SHA
+          $notes = 'A-side SW startup and safe CAD pause recovery, 21 MCP tools and desktop CAD management. Live/unknown callers and stale pause IDs cannot be unlocked; startup COM runs in a supervised helper. Update NAS/A MCP source/B EXE together. No tokens/settings embedded. Source: ' + $env:GITHUB_SHA
           gh release create $tag dist/RemoteBHub.exe dist/RemoteBClient.exe dist/update-manifest.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Remote B Hub $tag" --notes $notes --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
