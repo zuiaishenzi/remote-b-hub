@@ -132,7 +132,11 @@ path=os.path.join(output_dir,'RemoteB_Blender_Acceptance.blend')
 assert not os.path.exists(path), 'Refusing overwrite'
 bpy.ops.wm.save_as_mainfile(filepath=path)
 scene=bpy.context.scene
-scene.render.engine='BLENDER_WORKBENCH'
+scene.render.engine='CYCLES'
+scene.cycles.device='CPU'
+scene.cycles.samples=4
+scene.render.threads_mode='FIXED'
+scene.render.threads=2
 scene.render.resolution_x=320
 scene.render.resolution_y=240
 scene.render.resolution_percentage=100
@@ -180,6 +184,9 @@ result={'saved':path,'bytes':os.path.getsize(path),'sha256':hashlib.sha256(open(
             server.should_exit = True
         log.close()
         (directory/'acceptance.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
+        if not results.get('passed'):
+            print('Actual Blender child log (last 60 lines):', flush=True)
+            print('\n'.join((directory/'blender.log').read_text(encoding='utf-8',errors='replace').splitlines()[-60:]), flush=True)
 
 
 if __name__ == '__main__':
