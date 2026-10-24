@@ -147,9 +147,21 @@ def blender_state(directory):
     identity = lock['request_id']
     receipt = Path(directory) / 'blender-runs' / identity / 'response.json'
     response = json.loads(receipt.read_text(encoding='utf-8')) if receipt.exists() else None
+    terminal = bool(response and response.get('id') == identity)
+    process_exited = False
+    process_error = None
+    pid = lock.get('blender_pid')
+    if not terminal and type(pid) is int and pid > 0:
+        try:
+            from windows_processes import process_family
+            process_exited = not process_family(pid)
+        except OSError as exc:
+            process_error = str(exc)
     return {'paused': True, 'pause_id': hashlib.sha256(raw).hexdigest(),
             'request_id': identity, 'reason': lock['reason'], 'created': lock['created'],
-            'can_resume': bool(response and response.get('id') == identity),
+            'can_resume': terminal or process_exited,
+            'blender_pid': pid, 'process_exited': process_exited, 'process_error': process_error,
+            'recovery_basis': 'terminal_receipt' if terminal else ('process_exited' if process_exited else None),
             'late_result': response, 'audit': str(receipt.parent)}
 
 
@@ -165,9 +177,11 @@ def execute_blender(params, config, directory, progress=lambda *_: None, job_id=
             raise PermissionError('B has not enabled full-trust Blender remote control')
         state = blender_state(directory)
         if not state.get('paused') or state['pause_id'] != params['pause_id'] or not state['can_resume']:
-            raise RuntimeError('Blender pause changed or old command has no terminal receipt; inspect B, do not force unlock')
+            raise RuntimeError('Blender pause changed, or old command has neither a terminal receipt nor confirmed exited process; inspect B, do not force unlock')
         target = directory / 'blender-runs' / state['request_id'] / ('recovery-' + uuid.uuid4().hex + '.json')
-        atomic_json(target, {'actor': 'authenticated-A', 'pause_id': state['pause_id'], 'acknowledged': True, 'time': time.time()})
+        target.parent.mkdir(parents=True, exist_ok=True)
+        atomic_json(target, {'actor': 'authenticated-A', 'pause_id': state['pause_id'],
+                             'recovery_basis': state['recovery_basis'], 'acknowledged': True, 'time': time.time()})
         (directory / LOCK).unlink()
         return {'resumed': True, 'audit': str(target), 'previous_result': state['late_result']}
     if action == 'image':
@@ -203,6 +217,9 @@ def execute_blender(params, config, directory, progress=lambda *_: None, job_id=
             report = exchange(settings, {'action': 'status'}, uuid.uuid4().hex, 3)
             if not report.get('ok'):
                 raise BlenderError('Blender bridge rejected status', report)
+            from blender_bridge import BRIDGE_SHA256, PROTOCOL
+            if report['value'].get('bridge_protocol') != PROTOCOL or report['value'].get('bridge_sha256') != BRIDGE_SHA256:
+                raise RuntimeError('Blender bridge source does not match this B client. Save your work, export/install the updated bridge add-on and reopen Blender.')
         except Exception as exc:
             report = None
             status_error = str(exc)
@@ -219,7 +236,7 @@ def execute_blender(params, config, directory, progress=lambda *_: None, job_id=
         from windows_processes import process_session, processes_in_session
         processes = processes_in_session('blender.exe', process_session())
         if processes:
-            raise RuntimeError('Blender is already running but its bridge is unavailable. Enable the exported Remote B Hub add-on; no second instance was started. PIDs=' + str(processes))
+            raise RuntimeError('Blender is already running but its bridge is unavailable or outdated. Enable the updated exported Remote B Hub add-on; no second instance was started. PIDs=' + str(processes) + '; ' + status_error)
         executable = discover_executable(config)
         if not executable:
             raise FileNotFoundError('Blender not found; configure blender.exe in B Settings (Blender 4.2+ recommended)')
@@ -244,6 +261,9 @@ def execute_blender(params, config, directory, progress=lambda *_: None, job_id=
             time.sleep(.5)
         else:
             raise TimeoutError('Blender bridge startup timed out; process left open. Check Blender, do not start a duplicate instance.')
+    from blender_bridge import BRIDGE_SHA256, PROTOCOL
+    if report['value'].get('bridge_protocol') != PROTOCOL or report['value'].get('bridge_sha256') != BRIDGE_SHA256:
+        raise RuntimeError('Blender bridge version differs from B client; save work, re-export/install the updated add-on and reopen Blender.')
     if action in ('status', 'start'):
         return {'connected': True, 'session': report['value'], 'upstream_commit': UPSTREAM_COMMIT}
     identity = uuid.uuid4().hex
@@ -253,7 +273,8 @@ def execute_blender(params, config, directory, progress=lambda *_: None, job_id=
     atomic_json(audit / 'submitted.json', {'params': params, 'job_id': job_id, 'created': time.time()})
     progress('blender_execute', f"action={action}; audit={identity}; timeout={timeout}s")
     # Reserve pause before transmission. A crash/disconnect cannot silently unlock.
-    atomic_json(directory / LOCK, {'request_id': identity, 'created': time.time(), 'reason': 'Blender command in flight; completion not confirmed'})
+    atomic_json(directory / LOCK, {'request_id': identity, 'blender_pid': report['value'].get('pid'),
+                                   'created': time.time(), 'reason': 'Blender command in flight; completion not confirmed'})
     try:
         report = exchange(settings, params, identity, timeout)
     except Exception as exc:

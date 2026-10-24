@@ -17,7 +17,7 @@ description: 通过 pc-b MCP 在电脑 B 的 Blender 中建模、编辑场景、
 
 每次提交用 `computer_b_job` 取得真实结果，读 request/progress/result/diagnostics；核对 before/after/log_tail/traceback。失败可能已部分修改场景，不能声称回滚。保存时显式检查目标不存在，返回真实路径、大小；重要结果再打开检查对象、几何和修改器，不能以视图或“任务成功”代替验收。
 
-超时或断线时保持 Blender 打开并暂停该控制通道；不原样重试。调用 `computer_b_blender_state` 读取暂停 ID 和迟到执行回执。只有旧命令有终态回执且已经核对场景，才调用 `computer_b_resume_blender`，传当前 pause_id 和明确 acknowledgment。无终态时不强杀进程、不删标记；需检查 B 并诊断。SW 和 Blender 的暂停、权限互相独立。
+超时或断线时保持 Blender 打开并暂停该控制通道；不原样重试。调用 `computer_b_blender_state` 读取暂停 ID 和迟到执行回执。只有旧命令有终态回执或原 Blender 进程及其子进程已经确认退出，且已经核对场景，才调用 `computer_b_resume_blender`，传当前 pause_id 和明确 acknowledgment。无终态且旧进程未确认退出时，不强杀进程、不删标记；需检查 B 并诊断。恢复不表示未保存的修改已保留。SW 和 Blender 的暂停、权限互相独立。
 
 图像：先在 B 的 `output_dir` 内渲染 PNG/JPEG，再 `computer_b_blender_image` 上传简单文件名，需要 B 单独开启图像上传。之后列附件、下载并实际打开图像再评价，不假装看到截图；此功能不是实时视频，也不捕获整个桌面。UU 等视频需另行配置。
 

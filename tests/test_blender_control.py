@@ -68,7 +68,8 @@ class BlenderTests(unittest.TestCase):
 
     def test_lost_response_pauses_and_terminal_receipt_required_for_resume(self):
         settings, _ = prepare_bridge(self.config, self.directory)
-        with patch('blender_control.exchange', side_effect=[{'ok': True, 'value': {}}, TimeoutError('test delay')]):
+        from blender_bridge import PROTOCOL, BRIDGE_SHA256
+        with patch('blender_control.exchange', side_effect=[{'ok': True, 'value': {'bridge_protocol':PROTOCOL,'bridge_sha256':BRIDGE_SHA256}}, TimeoutError('test delay')]):
             with self.assertRaises(BlenderError):
                 execute_blender({'action': 'script', 'code': 'pass'}, self.config, self.directory)
         state = blender_state(self.directory)
@@ -85,6 +86,20 @@ class BlenderTests(unittest.TestCase):
         self.assertFalse((self.directory/LOCK).exists())
         self.assertEqual(json.loads(Path(result['audit']).read_text())['actor'], 'authenticated-A')
 
+    def test_crashed_blender_can_resume_only_after_native_process_exit_confirmed(self):
+        atomic_json(self.directory/LOCK,{'request_id':uuid.uuid4().hex,'blender_pid':2147483000,
+                                       'created':0,'reason':'test crashed Blender'})
+        with patch('windows_processes.process_family',return_value=[2147483000]):
+            self.assertFalse(blender_state(self.directory)['can_resume'])
+        with patch('windows_processes.process_family',side_effect=OSError('scan unavailable')):
+            self.assertFalse(blender_state(self.directory)['can_resume'])
+        with patch('windows_processes.process_family',return_value=[]):
+            state=blender_state(self.directory)
+            self.assertTrue(state['can_resume'])
+            self.assertEqual(state['recovery_basis'],'process_exited')
+            recovered=execute_blender({'action':'resume','pause_id':state['pause_id'],'acknowledge_state':True},self.config,self.directory)
+            self.assertTrue(recovered['resumed'])
+
     def test_local_auth_failure_never_imports_bpy_or_creates_audit(self):
         bridge = Bridge({'directory': str(self.directory), 'token': 'x'*64, 'port': 18766})
         with patch('blender_bridge.snapshot') as snapshot:
@@ -92,6 +107,13 @@ class BlenderTests(unittest.TestCase):
         self.assertFalse(response['ok'])
         snapshot.assert_not_called()
         self.assertFalse((self.directory/'blender-runs').exists())
+
+    def test_old_bridge_source_is_not_mistaken_for_updated_runtime(self):
+        prepare_bridge(self.config,self.directory)
+        with patch('blender_control.exchange',return_value={'ok':True,'value':{'blender_version':'4.2','pid':123}}):
+            status=execute_blender({'action':'status'},self.config,self.directory)
+            self.assertFalse(status['connected'])
+            self.assertIn('does not match',status['bridge_error'])
 
     def test_request_identity_replay_never_executes_twice_or_corrupts_receipt(self):
         bridge = Bridge({'directory': str(self.directory), 'token': 'x'*64, 'port': 18766})

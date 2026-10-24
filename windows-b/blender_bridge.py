@@ -19,6 +19,7 @@ import traceback
 PROTOCOL = 1
 MAX_PACKET = 45000
 MAX_RESPONSE = 36000  # ASCII-escaped JSON budget leaves room for relay diagnostics.
+BRIDGE_SHA256 = hashlib.sha256(Path(__file__).read_bytes().replace(b'\r\n', b'\n')).hexdigest()
 
 
 def atomic_json(path, value):
@@ -52,6 +53,7 @@ def snapshot():
     scene = bpy.context.scene
     objects = list(scene.objects)
     return {'blender_version': bpy.app.version_string, 'pid': os.getpid(),
+            'bridge_protocol': PROTOCOL, 'bridge_sha256': BRIDGE_SHA256,
             'file': bpy.data.filepath, 'modified': bpy.data.is_dirty,
             'scene': scene.name, 'unit_system': scene.unit_settings.system,
             'scale_length': scene.unit_settings.scale_length,

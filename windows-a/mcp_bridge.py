@@ -105,7 +105,7 @@ def computer_b_blender_script(code: str, timeout_seconds: int = 60) -> dict:
 @mcp.tool()
 def computer_b_blender_state() -> dict:
     """Read Blender pause ID, audit and any late terminal receipt without contacting bpy.
-    can_resume means old execution returned, not that its model is valid. Poll the job.
+    can_resume means a terminal receipt exists or the old process exited, not model validity. Poll the job.
     """
     return blender_job({'action': 'state'})
 
@@ -113,7 +113,7 @@ def computer_b_blender_state() -> dict:
 @mcp.tool()
 def computer_b_resume_blender(pause_id: str, acknowledge_state: bool) -> dict:
     """Resume exact Blender pause after reading late result and inspecting scene/B.
-    Requires B opt-in and a terminal receipt; never cancels running bpy or force unlocks.
+    Requires B opt-in and terminal receipt or confirmed old process exit; never cancels running bpy.
     Model correctness is not implied. Do not repeat failed script unchanged. Poll job.
     """
     return blender_job({'action': 'resume', 'pause_id': pause_id, 'acknowledge_state': acknowledge_state})

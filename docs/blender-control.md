@@ -43,7 +43,7 @@ A 的实际 Git 仓库执行 `git pull --ff-only`，保存原连接配置，然�
 
 保存后启动任务代理。设置页“启动 / 检查 Blender”将请求交给现有代理，排在当前任务之后；代理未运行时本地直接启动。
 
-若 Blender 由 B 启动器启动，会通过 `--python` 自动加载桥接。若 Blender 已手动打开，点击“导出 Blender 桥接插件”，在 Blender **Edit → Preferences → Add-ons → Install from Disk** 安装 ZIP 并启用 **Remote B Hub Blender Bridge**。一次安装后插件会随 Blender 启用。配置中的本机桥接 secret 自动生成，与 NAS A/B Token 分开，ZIP 不包含 secret。更改桥接端口/输出目录后，需停止并重新启用插件，或在保存工作后重新打开 Blender。
+若 Blender 由 B 启动器启动，会通过 `--python` 自动加载桥接。若 Blender 已手动打开，点击“导出 Blender 桥接插件”，在 Blender **Edit → Preferences → Add-ons → Install from Disk** 安装 ZIP 并启用 **Remote B Hub Blender Bridge**。一次安装后插件会随 Blender 启用。桥接还返回自身源码 SHA256，B 会拒绝与本客户端源码不匹配的旧插件；更新客户端后若已有插件过旧，请重新导出/安装并在保存工作后重开 Blender。配置中的本机桥接 secret 自动生成，与 NAS A/B Token 分开，ZIP 不包含 secret。更改桥接端口/输出目录后，需停止并重新启用插件，或在保存工作后重新打开 Blender。
 
 ## A 的控制入口
 
@@ -60,7 +60,7 @@ MCP 工具：
 | `computer_b_blender_command` | 调用固定上游指令，例如 `object_create`，需 B 授权 |
 | `computer_b_blender_script` | Blender 主线程 bpy 脚本，返回 JSON 字典 `result` |
 | `computer_b_blender_state` | 不接触 bpy，查询暂停 ID、审计与迟到回执 |
-| `computer_b_resume_blender` | 精确匹配暂停且旧命令有终态回执时，确认状态后恢复 |
+| `computer_b_resume_blender` | 精确匹配暂停且旧命令有终态回执或旧进程确认退出时，确认状态后恢复 |
 | `computer_b_blender_image` | 从 B Blender 输出目录上传指定 PNG/JPEG，需 B 图像授权 |
 
 所有远端工具返回排队 ID，需通过 `computer_b_job` 读取真实执行结果。目录工具只说明指令存在，不证明运行成功。
@@ -73,7 +73,7 @@ MCP 工具：
 
 命令超时 10–300 秒。执行前记录审计并预留 Blender 暂停锁，收到终态回执才清除。超时、断线或 B 代理异常退出时，保留 Blender 进程和锁，不杀进程、不原样重试。
 
-状态工具读取 `blender-runs/<request-id>` 中的迟到回执。旧命令已有终态且 A 核对了模型/错误后，才能使用当前 `pause_id` 与 `acknowledge_state=true` 恢复。尚无终态时拒绝恢复，即便只是渲染慢；需检查 B。此恢复不证明几何正确。SW 暂停标记不受影响。
+状态工具读取 `blender-runs/<request-id>` 中的迟到回执。旧命令已有终态回执，或原 Blender 进程及子进程已由 Windows 原生进程检查确认退出，且 A 核对了模型/错误后，才能使用当前 `pause_id` 与 `acknowledge_state=true` 恢复。尚无终态且进程仍运行/无法确定时拒绝恢复，即便只是渲染慢；需检查 B。恢复不保证崩溃前的未保存修改仍在。此恢复不证明几何正确。SW 暂停标记不受影响。
 
 B 配置目录下有 `agent.log`、`blender-start.log`、`blender-runs` 的 request/state/response 与恢复审计。错误返回 traceback、部分日志及执行器版本；相同 request ID 回执可读取但不重复执行。日志与结果有大小上限，返回超限也会报告“可能已修改场景”，不能按未执行重试。
 
