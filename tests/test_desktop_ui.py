@@ -118,5 +118,64 @@ class DesktopUiTests(unittest.TestCase):
         self.assertEqual(errors,[])
         self.assertEqual(json.loads(path.read_text())['stage'],'stopped')
 
+    def test_switch_explicit_state_matches_boolean_setting(self):
+        import tkinter as tk
+        from desktop_ui import ToggleControl
+        value=tk.BooleanVar(master=self.root,value=True)
+        switch=ToggleControl(self.root,value)
+        self.assertEqual(switch.state_label.get(),'已启用')
+        self.assertFalse(int(switch.cget('indicatoron')))
+        switch.invoke()
+        self.assertFalse(value.get())
+        self.assertEqual(switch.state_label.get(),'未启用')
+        switch.invoke()
+        self.assertTrue(value.get())
+        self.assertEqual(switch.state_label.get(),'已启用')
+
+    def test_agent_button_tracks_running_and_graceful_stop(self):
+        from unittest.mock import Mock
+        from desktop_launcher import Launcher
+        with patch('desktop_launcher.worker_running',return_value=False):
+            app=Launcher(self.root,self.directory,smoke=True)
+            def start():
+                app.process=Mock()
+                app.process.poll.return_value=None
+            with patch.object(app,'start',side_effect=start) as start_action, \
+                 patch.object(app,'stop',wraps=app.stop) as stop_action:
+                app.toggle_agent()
+                start_action.assert_called_once()
+                self.assertEqual(app.agent_toggle.cget('text'),'停止任务代理')
+                app.toggle_agent()
+                self.assertEqual(stop_action.call_count,1)
+                self.assertEqual(app.agent_toggle.cget('text'),'正在停止…')
+                self.assertTrue(app.agent_toggle.instate(['disabled']))
+                app.toggle_agent()
+                self.assertEqual(stop_action.call_count,1)
+                app.process.poll.return_value=0
+                app.sync_agent_control(False)
+                self.assertEqual(app.agent_toggle.cget('text'),'启动任务代理')
+                self.assertTrue(app.agent_toggle.instate(['!disabled']))
+
+    def test_both_home_pages_fit_without_scroll_at_minimum_size(self):
+        from desktop_launcher import Launcher
+        from client_gui import ClientWindow
+        for kind in ('b','a'):
+            with self.subTest(kind=kind),patch('desktop_launcher.worker_running',return_value=False):
+                if kind=='b':app=Launcher(self.root,self.directory,smoke=True)
+                else:app=ClientWindow(self.root,self.directory,smoke=True)
+                self.root.geometry('960x640')
+                self.root.deiconify()
+                self.root.update()
+                self.assertLessEqual(app.shell.home.winfo_reqheight(),app.shell.home.winfo_height())
+                def widgets(parent):
+                    for child in parent.winfo_children():
+                        yield child
+                        yield from widgets(child)
+                all_widgets=list(widgets(app.shell.home))
+                self.assertFalse(any(w.winfo_class()=='Canvas' for w in all_widgets))
+                self.assertFalse(any('最小化驻留' in str(w.cget('text')) for w in all_widgets if 'text' in w.keys()))
+                for callback in self.root.tk.call('after','info'):self.root.after_cancel(callback)
+                for child in self.root.winfo_children():child.destroy()
+
 
 if __name__=='__main__':unittest.main()

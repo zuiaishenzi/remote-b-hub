@@ -23,7 +23,8 @@ class CadControlWindow:
         ttk.Label(panel, text='当前暂停 ID（读取状态后自动填写）').pack(anchor='w')
         ttk.Entry(panel, textvariable=self.pause_id).pack(fill='x', pady=5)
         self.acknowledge = tk.BooleanVar(value=False)
-        ttk.Checkbutton(panel, text='我已检查错误和 SW 状态，允许解除本次暂停', variable=self.acknowledge).pack(anchor='w')
+        from desktop_ui import ToggleControl,BG
+        ToggleControl(panel,self.acknowledge,'已确认当前状态','尚未确认状态',background=BG).pack(anchor='w')
         ttk.Button(panel, text='安全解除本次暂停', command=self.resume).pack(anchor='w', pady=8)
         self.status = tk.StringVar(value='尚未读取状态；任务结果显示在 A 主窗口。')
         ttk.Label(panel, textvariable=self.status, wraplength=730).pack(anchor='w')

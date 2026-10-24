@@ -34,6 +34,8 @@ def install_theme(root, product):
     style.map('TButton',background=[('active','#edf1fe'),('pressed','#e2e8ff')],bordercolor=[('focus',BLUE)])
     style.configure('Primary.TButton',foreground='white',background=BLUE,bordercolor=BLUE,lightcolor=BLUE,darkcolor=BLUE)
     style.map('Primary.TButton',background=[('active','#3452d3'),('pressed','#2944bc')],foreground=[('disabled','#ccd5ff')])
+    style.configure('Danger.TButton',foreground='#b42335',background='#fff1f2',bordercolor='#f3c9d0')
+    style.map('Danger.TButton',background=[('active','#ffe2e7'),('pressed','#ffd1d9')])
     style.configure('TEntry',padding=8,fieldbackground='white',bordercolor=LINE,lightcolor=LINE,darkcolor=LINE)
     style.map('TEntry',bordercolor=[('focus',BLUE)])
     style.configure('TCombobox',padding=7,fieldbackground='white',bordercolor=LINE)
@@ -86,15 +88,55 @@ def button(parent,text,command,primary=False,icon=None):
     return item
 
 
+class ToggleControl(tk.Checkbutton):
+    """A BooleanVar-backed pill switch with explicit on/off text, no X indicator."""
+    def __init__(self,parent,variable,on_text='已启用',off_text='未启用',background='white'):
+        from PIL import Image,ImageDraw,ImageTk
+        self.variable=variable
+        self.state_label=tk.StringVar(master=parent)
+        self._images=[]
+        for enabled in (False,True):
+            image=Image.new('RGBA',(168,88))
+            draw=ImageDraw.Draw(image)
+            draw.rounded_rectangle((2,2,166,86),radius=42,fill=BLUE if enabled else '#c3cbd8')
+            x=84 if enabled else 12
+            draw.ellipse((x,12,x+64,76),fill='white')
+            self._images.append(ImageTk.PhotoImage(image.resize((42,22),Image.Resampling.LANCZOS),master=parent))
+        super().__init__(parent,variable=variable,onvalue=True,offvalue=False,indicatoron=False,
+            image=self._images[0],selectimage=self._images[1],textvariable=self.state_label,
+            compound='left',bg=background,activebackground=background,selectcolor=background,
+            fg=MUTED,activeforeground=INK,bd=0,relief='flat',offrelief='flat',overrelief='flat',
+            highlightthickness=1,highlightbackground=background,highlightcolor=BLUE,
+            padx=5,pady=2,font=('Microsoft YaHei UI',9),cursor='hand2',takefocus=True)
+        def update(*args):
+            enabled=bool(variable.get())
+            self.state_label.set(on_text if enabled else off_text)
+            self.configure(fg=BLUE if enabled else MUTED)
+        self._trace=variable.trace_add('write',update)
+        self.bind('<Destroy>',lambda e:variable.trace_remove('write',self._trace) if e.widget is self else None)
+        update()
+
+
+def toggle_row(parent,text,variable):
+    row=ttk.Frame(parent,style='Card.TFrame')
+    row.pack(fill='x',pady=3)
+    control=ToggleControl(row,variable)
+    control.pack(side='right',padx=(12,0))
+    label=ttk.Label(row,text=text,style='Card.TLabel',wraplength=470)
+    label.pack(side='left',fill='x',expand=True)
+    row.bind('<Configure>',lambda e:label.configure(wraplength=max(180,e.width-150)))
+    return control
+
+
 def section(parent,title,subtitle=None):
     border=tk.Frame(parent,bg='white',highlightbackground=LINE,highlightthickness=1,bd=0)
-    border.pack(fill='x',pady=(0,16))
-    inner=ttk.Frame(border,style='Card.TFrame',padding=18)
+    border.pack(fill='x',pady=(0,12))
+    inner=ttk.Frame(border,style='Card.TFrame',padding=14)
     inner.pack(fill='both',expand=True)
-    ttk.Label(inner,text=title,style='Card.TLabel',font=('Microsoft YaHei UI',12,'bold')).pack(anchor='w')
+    ttk.Label(inner,text=title,style='Card.TLabel',font=('Microsoft YaHei UI',11,'bold')).pack(anchor='w')
     if subtitle:ttk.Label(inner,text=subtitle,style='CardMuted.TLabel',wraplength=690).pack(anchor='w',pady=(4,0))
     body=ttk.Frame(inner,style='Card.TFrame')
-    body.pack(fill='both',expand=True,pady=(14,0))
+    body.pack(fill='both',expand=True,pady=(10,0))
     return body
 
 
@@ -102,12 +144,12 @@ class StatusCard:
     def __init__(self,parent,column,title,value='待检查',detail='尚未获取运行状态'):
         border=tk.Frame(parent,bg='white',highlightbackground=LINE,highlightthickness=1,bd=0)
         border.grid(row=0,column=column,sticky='nsew',padx=(0,12) if column<2 else 0)
-        body=ttk.Frame(border,style='Card.TFrame',padding=(18,16))
+        body=ttk.Frame(border,style='Card.TFrame',padding=(14,12))
         body.pack(fill='both',expand=True)
         ttk.Label(body,text=title,style='CardMuted.TLabel').pack(anchor='w')
-        self.value=ttk.Label(body,text=value,style='Card.TLabel',font=('Microsoft YaHei UI',17,'bold'))
-        self.value.pack(anchor='w',pady=(8,7))
-        self.detail=ttk.Label(body,text=detail,style='CardMuted.TLabel',wraplength=205)
+        self.value=ttk.Label(body,text=value,style='Card.TLabel',font=('Microsoft YaHei UI',15,'bold'))
+        self.value.pack(anchor='w',pady=(5,4))
+        self.detail=ttk.Label(body,text=detail,style='CardMuted.TLabel',font=('Microsoft YaHei UI',9),wraplength=205)
         self.detail.pack(anchor='w')
         border.bind('<Configure>',lambda e:self.detail.configure(wraplength=max(120,e.width-38)))
     def set(self,value,detail,tone='neutral'):
@@ -138,25 +180,25 @@ class ScrollPage(ttk.Frame):
 class DesktopShell:
     def __init__(self,root,product,title,subtitle):
         install_theme(root,product)
-        width=max(940,min(1160,root.winfo_screenwidth()-80))
-        height=max(620,min(840,root.winfo_screenheight()-90))
+        width=max(940,min(1040,root.winfo_screenwidth()-80))
+        height=max(620,min(640,root.winfo_screenheight()-90))
         left=max(0,(root.winfo_screenwidth()-width)//2)
         top=max(0,(root.winfo_screenheight()-height)//2-10)
         root.geometry(f'{width}x{height}+{left}+{top}')
         root.minsize(min(960,width),min(640,height))
         self.root,self.product=root,product
-        self.sidebar=tk.Frame(root,bg=NAV,width=220)
+        self.sidebar=tk.Frame(root,bg=NAV,width=180)
         self.sidebar.pack(side='left',fill='y')
         self.sidebar.pack_propagate(False)
         from PIL import Image,ImageTk
         with Image.open(asset(('RemoteBClient' if product=='a' else 'RemoteBHub')+'.png')) as image:
-            self.brand=ImageTk.PhotoImage(image.resize((40,40),Image.Resampling.LANCZOS),master=root)
+            self.brand=ImageTk.PhotoImage(image.resize((30,30),Image.Resampling.LANCZOS),master=root)
         brand=tk.Frame(self.sidebar,bg=NAV)
-        brand.pack(fill='x',padx=22,pady=(30,34))
+        brand.pack(fill='x',padx=16,pady=(24,22))
         tk.Label(brand,image=self.brand,bg=NAV).pack(side='left')
         labels=tk.Frame(brand,bg=NAV)
         labels.pack(side='left',padx=(10,0))
-        tk.Label(labels,text='REMOTE B',font=('Segoe UI',13,'bold'),fg='white',bg=NAV).pack(anchor='w')
+        tk.Label(labels,text='REMOTE B',font=('Segoe UI',11,'bold'),fg='white',bg=NAV).pack(anchor='w')
         tk.Label(labels,text='A 端控制台' if product=='a' else 'B 端工作站',font=('Microsoft YaHei UI',9),fg='#9aaac4',bg=NAV).pack(anchor='w',pady=(2,0))
         self.nav={}
         self.nav_icons={}
@@ -165,26 +207,24 @@ class DesktopShell:
             frame.pack(fill='x',padx=14,pady=4)
             self.nav_icons[key]=(symbol(root,icon,'#aebed6'),symbol(root,icon,'white'))
             item=tk.Button(frame,text='   '+label,image=self.nav_icons[key][0],compound='left',
-                anchor='w',padx=18,pady=13,bd=0,relief='flat',bg=NAV,fg='#b5c3d8',
+                anchor='w',padx=14,pady=10,bd=0,relief='flat',bg=NAV,fg='#b5c3d8',
                 activebackground='#283b59',activeforeground='white',cursor='hand2',
-                font=('Microsoft YaHei UI',11),command=lambda k=key:self.show(k))
+                font=('Microsoft YaHei UI',10),command=lambda k=key:self.show(k))
             item.pack(fill='x')
             self.nav[key]=item
         bottom=tk.Frame(self.sidebar,bg=NAV)
         bottom.pack(side='bottom',fill='x',padx=24,pady=26)
         tk.Label(bottom,text='●  SOLIDWORKS 2023',fg='#93a9c7',bg=NAV,font=('Segoe UI',9)).pack(anchor='w')
-        tk.Label(bottom,text='连接 · 执行 · 验证',fg='#7188aa',bg=NAV,font=('Microsoft YaHei UI',9)).pack(anchor='w',pady=(6,0))
-        main=ttk.Frame(root,padding=(28,25,24,16))
+        main=ttk.Frame(root,padding=(22,20,20,14))
         main.pack(side='left',fill='both',expand=True)
         self.heading=tk.StringVar(value=title)
         self.subtitle=tk.StringVar(value=subtitle)
-        ttk.Label(main,textvariable=self.heading,font=('Microsoft YaHei UI',23,'bold')).pack(anchor='w')
-        ttk.Label(main,textvariable=self.subtitle,style='Muted.TLabel').pack(anchor='w',pady=(5,20))
+        ttk.Label(main,textvariable=self.heading,font=('Microsoft YaHei UI',18,'bold')).pack(anchor='w')
+        ttk.Label(main,textvariable=self.subtitle,style='Muted.TLabel').pack(anchor='w',pady=(3,14))
         self.container=ttk.Frame(main)
         self.container.pack(fill='both',expand=True)
-        self.home_scroll=ScrollPage(self.container)
-        self.home=self.home_scroll.body
-        self.pages={'home':self.home_scroll,'logs':ttk.Frame(self.container)}
+        self.home=ttk.Frame(self.container)
+        self.pages={'home':self.home,'logs':ttk.Frame(self.container)}
         self.scroll=ScrollPage(self.container)
         self.pages['settings']=self.scroll
         self.settings=self.scroll.body
@@ -215,7 +255,7 @@ class LogView:
         entry=ttk.Entry(tools,textvariable=self.query)
         entry.pack(side='left',fill='x',expand=True,padx=(0,10))
         self.follow=tk.BooleanVar(value=True)
-        ttk.Checkbutton(tools,text='自动滚动',variable=self.follow).pack(side='left',padx=6)
+        ToggleControl(tools,self.follow,'自动滚动：开','自动滚动：关',background=BG).pack(side='left',padx=6)
         button(tools,'导出',self.export).pack(side='left',padx=4)
         button(tools,'清空显示',self.clear).pack(side='left',padx=4)
         self.widget=scrolledtext.ScrolledText(parent,state='disabled',font=('Consolas',10),wrap='word',

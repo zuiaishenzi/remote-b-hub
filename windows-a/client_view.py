@@ -7,15 +7,16 @@ from desktop_ui import DesktopShell,StatusCard,LogView,section,button
 
 def build_client(app):
     app.root.title('Remote B Hub · A 端控制台')
-    shell=app.shell=DesktopShell(app.root,'a','控制台概览','连接电脑 B，让 SolidWorks 任务有序执行。')
+    shell=app.shell=DesktopShell(app.root,'a','首页','A 端控制台')
     home=shell.home
     cards=ttk.Frame(home)
-    cards.pack(fill='x',pady=(0,20))
+    cards.pack(fill='x',pady=(0,16))
     for column in range(3):cards.columnconfigure(column,weight=1,uniform='cards')
     app.connection_card=StatusCard(cards,0,'电脑 B','待检查','尚未取得代理在线状态')
     app.sw_card=StatusCard(cards,1,'SOLIDWORKS','待检查','通过实际任务确认连接')
     app.task_card=StatusCard(cards,2,'最近任务','暂无任务','提交后显示任务状态')
-    actions=section(home,'快速操作','从这里启动 Codex、管理 CAD，或提交分步脚本。')
+    actions=ttk.Frame(home)
+    actions.pack(fill='x',pady=(0,10))
     for column in range(3):actions.columnconfigure(column,weight=1)
     for index,(label,callback,primary,icon) in enumerate([
         ('启动 Codex',app.start_codex,True,'play'),('CAD 管理',app.open_cad_control,False,'computer'),
@@ -29,8 +30,7 @@ def build_client(app):
     row.pack(fill='x',pady=(12,0))
     button(row,'读取任务结果',app.read_job,icon='refresh').pack(side='left',padx=(0,10))
     button(row,'查看详细日志',lambda:shell.show('logs'),icon='logs').pack(side='left')
-    ttk.Label(home,text='B 在线状态每 10 秒刷新；SW 状态来自最近的任务查询。建模结果请在日志页核对。',
-              style='Muted.TLabel',wraplength=750).pack(anchor='w',pady=(6,0))
+
     logs=shell.pages['logs']
     row=ttk.Frame(logs)
     row.pack(fill='x',pady=(0,10))

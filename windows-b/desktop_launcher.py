@@ -151,6 +151,22 @@ class Launcher:
             messagebox.showerror("设置未保存", redact(str(exc), self.variables["token"].get()))
             return False
 
+    def sync_agent_control(self, running):
+        stopping=running and (self.directory / 'stop.request').exists()
+        self.agent_toggle.configure(text='正在停止…' if stopping else ('停止任务代理' if running else '启动任务代理'),
+            style='Danger.TButton' if running else 'Primary.TButton',
+            image=self.agent_icons['stop' if running else 'start'],state='disabled' if stopping else 'normal')
+
+    def toggle_agent(self):
+        running=(self.process is not None and self.process.poll() is None) or worker_running()
+        if running:
+            if not (self.directory / 'stop.request').exists():
+                self.stop()
+        else:
+            self.start()
+        running=(self.process is not None and self.process.poll() is None) or worker_running()
+        self.sync_agent_control(running)
+
     def start(self):
         if self.process and self.process.poll() is None:
             self.message("代理已运行。")
@@ -269,10 +285,12 @@ class Launcher:
             except (OSError, ValueError, KeyError):
                 pass
         self.status.set("代理运行中 · 详细状态见日志" if running else "代理未运行 · 可在首页启动")
-        self.runtime_detail.set(redact(description, self.secret))
-        self.job_detail.set("当前任务：" + str(state.get("job_id") or "无"))
-        self.agent_card.set("停止中" if running and not self.want_agent else ("运行中" if running else "未启动"),
-                            "等待当前任务结束" if running and not self.want_agent else state.get("stage", "等待启动"),
+        detail=redact(description,self.secret)
+        self.runtime_detail.set(detail if len(detail)<=110 else detail[:100]+"…（详见日志）")
+        self.job_detail.set("任务 ID：" + str(state.get("job_id") or "无"))
+        self.sync_agent_control(running)
+        self.agent_card.set("停止中" if running and (self.directory / "stop.request").exists() else ("运行中" if running else "未启动"),
+                            "等待当前任务结束" if running and (self.directory / "stop.request").exists() else state.get("stage", "等待启动"),
                             "good" if running else "neutral")
         if state.get('stage') == 'idle' and state.get('authenticated'):
             self.nas_card.set('已连接', '代理轮询已通过鉴权', 'good')

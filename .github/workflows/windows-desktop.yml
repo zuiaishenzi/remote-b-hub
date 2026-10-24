@@ -43,6 +43,6 @@ jobs:
           $tag = 'desktop-' + $env:GITHUB_RUN_NUMBER + '-' + $env:GITHUB_RUN_ATTEMPT
           & ./.venv-build/Scripts/python.exe scripts/write-update-manifest.py
           if ($LASTEXITCODE -ne 0) { throw 'Update manifest failed' }
-          $notes = 'Redesigned A/B desktop: sidebar navigation with Home, Logs and Settings, live status cards, searchable/exportable logs and original multi-size Windows icons. Existing encrypted settings retained; no NAS update required for this UI release. Source: ' + $env:GITHUB_SHA
+          $notes = 'Simplified A/B desktop: single-screen Home, one Start/Stop agent button, explicit Enabled/Disabled switches and no redundant minimize button. Existing settings and 21 MCP tools retained; no NAS update required. Source: ' + $env:GITHUB_SHA
           gh release create $tag dist/RemoteBHub.exe dist/RemoteBClient.exe dist/update-manifest.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Remote B Hub $tag" --notes $notes --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

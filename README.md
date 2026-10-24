@@ -25,7 +25,7 @@
 
 本次升级：新增 A 桌面控制台、受限 PowerShell/C# Interop 文档控制、鉴权截图附件，
 并修复 B EXE 无法直接关闭的问题。新版“×”一次退出启动器并请求代理完成当前任务后停止；
-驻留使用独立的“最小化驻留”按钮。
+最小化使用窗口标题栏按钮，首页不再设置独立驻留按钮。
 详见 [升级顺序、实际能力及图片/视频手动配置](docs/script-control-upgrade.md)。
 需要同时更新 NAS、A 桥接与 B EXE；新版文件见 [Releases](https://github.com/zuiaishenzi/remote-b-hub/releases/latest)。
 
