@@ -93,6 +93,26 @@ class DesktopUiTests(unittest.TestCase):
             with Image.open(ROOT/'assets'/(name+'.ico')) as icon:
                 self.assertTrue({(16,16),(32,32),(256,256)}<=icon.ico.sizes())
 
+    def test_blender_console_loads_catalog_and_preserves_independent_script(self):
+        app=self.app_a()
+        window=app.open_blender()
+        self.assertEqual(len(window.entries),218)
+        window.code.delete('1.0','end')
+        window.code.insert('1.0','result={"test":True}')
+        with patch.object(app,'call') as send:
+            window.submit_script()
+            self.assertEqual(send.call_args.args[0],'submitted')
+        self.assertIn('result=',window.code.get('1.0','end'))
+        self.assertFalse((self.directory/'config.json').exists())
+
+    def test_blender_connected_result_does_not_claim_sw_connected(self):
+        app=self.app_a()
+        app.queue.put(('job',{'operation':'blender_control','status':'done','job_id':'fixture',
+                             'result':{'value':{'connected':True,'session':{'blender_version':'4.2'}}}}))
+        with patch.object(app.sw_card,'set') as sw:
+            app.tick()
+            sw.assert_not_called()
+
     def test_windows_state_reader_does_not_break_atomic_status_write(self):
         import json
         import threading

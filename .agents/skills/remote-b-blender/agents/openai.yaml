@@ -1,0 +1,11 @@
+interface:
+  display_name: "电脑 B · Blender"
+  short_description: "由 A 通过 pc-b 控制 B 的 Blender，并核验模型、文件与图像"
+  default_prompt: "使用 $remote-b-blender 检查电脑 B 的 Blender 场景并完成我的建模任务。"
+policy:
+  allow_implicit_invocation: true
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "pc-b"
+      description: "当前用户配置的电脑 B Blender 远端任务通道"

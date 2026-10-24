@@ -22,6 +22,13 @@ async def main():
         assert {'computer_b_modeling_skills', 'computer_b_plan_part', 'computer_b_review_part'} <= names
         assert {'computer_b_sw_session', 'computer_b_sw_script', 'computer_b_cad_state',
                 'computer_b_resume_cad', 'computer_b_start_solidworks'} <= names
+        assert {'computer_b_blender_tools', 'computer_b_blender_status', 'computer_b_start_blender',
+                'computer_b_blender_scene', 'computer_b_blender_command', 'computer_b_blender_script',
+                'computer_b_blender_state', 'computer_b_resume_blender', 'computer_b_blender_image'} <= names
+        blender_catalog = await client.call_tool('computer_b_blender_tools', {'name': 'object_create'})
+        assert not blender_catalog.is_error
+        invalid_blender = await client.call_tool('computer_b_blender_script', {'code': 'if'})
+        assert invalid_blender.is_error
         invalid_recovery = await client.call_tool('computer_b_resume_cad',
             {'pause_id': 'old', 'acknowledge_state': True})
         assert invalid_recovery.is_error

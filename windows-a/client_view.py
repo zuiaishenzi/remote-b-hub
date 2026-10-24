@@ -22,7 +22,7 @@ def build_client(app):
         ('启动 Codex',app.start_codex,True,'play'),('CAD 管理',app.open_cad_control,False,'computer'),
         ('建模技能',app.open_skills,False,'settings'),('SW 脚本',app.open_script,False,'logs'),
         ('检查 B 在线',app.refresh_status,False,'refresh'),
-        ('请求 SW 截图',lambda:app.call('submitted',lambda c:c.request('POST','/api/jobs',{'operation':'screenshot'})),False,'computer')]):
+        ('Blender 控制',app.open_blender,False,'computer')]):
         button(actions,label,callback,primary,icon).grid(row=index//3,column=index%3,sticky='ew',padx=(0,10) if index%3<2 else 0,pady=(0,10))
     current=section(home,'当前任务')
     ttk.Entry(current,textvariable=app.job_id,state='readonly').pack(fill='x')
@@ -30,6 +30,7 @@ def build_client(app):
     row.pack(fill='x',pady=(12,0))
     button(row,'读取任务结果',app.read_job,icon='refresh').pack(side='left',padx=(0,10))
     button(row,'查看详细日志',lambda:shell.show('logs'),icon='logs').pack(side='left')
+    button(row,'SW 截图',lambda:app.call('submitted',lambda c:c.request('POST','/api/jobs',{'operation':'screenshot'})),icon='computer').pack(side='left',padx=10)
 
     logs=shell.pages['logs']
     row=ttk.Frame(logs)
@@ -63,6 +64,6 @@ def build_client(app):
     button(controls,'检查更新',app.open_update,icon='refresh').pack(side='left',padx=(0,10))
     button(controls,'打开日志目录',lambda:os.startfile(str(app.directory)),icon='folder').pack(side='left')
     about=section(shell.settings,'关于连接与控制')
-    ttk.Label(about,text='SolidWorks 2023 · 通过 pc-b 连接 B\n\n脚本权限和截图权限由 B 端设置控制。UU 等实时远控需单独配置。',
+    ttk.Label(about,text='SolidWorks 2023 / Blender · 通过 pc-b 连接 B\n\n两套程序的脚本和图像权限分别由 B 端控制。UU 等实时远控需单独配置。',
               style='CardMuted.TLabel',wraplength=700,justify='left').pack(anchor='w')
     shell.footer.set('准备就绪 · 运行详情见日志页')

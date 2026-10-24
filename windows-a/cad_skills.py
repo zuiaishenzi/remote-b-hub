@@ -168,8 +168,10 @@ def review_part(template, parameters, name, job):
             'expected_volume_mm3': plan['expected_volume_mm3'], 'volume_is_measured': False}
 
 
-def install_project_skills(workspace):
+def install_project_skills(workspace, names=SKILLS):
     """Explicit local install, no overwrites of edited skills, no traversal through links."""
+    if not set(names) <= set(SKILLS) | {'remote-b-blender'}:
+        raise ValueError('Unknown bundled skill')
     workspace = Path(workspace).absolute()
     if not workspace.is_dir():
         raise ValueError('Workspace must already exist')
@@ -181,7 +183,7 @@ def install_project_skills(workspace):
     reject_links(destination)
     installed = []
     # Preflight all files before writing either skill.
-    for name in SKILLS:
+    for name in names:
         source, target = library_root() / name, destination / name
         if not (source / 'SKILL.md').is_file():
             raise ValueError('Bundled skill is missing')
@@ -192,7 +194,7 @@ def install_project_skills(workspace):
                 if existing.exists() and existing.read_bytes() != item.read_bytes():
                     raise ValueError('Preserving edited file: ' + str(existing))
     destination.mkdir(parents=True, exist_ok=True)
-    for name in SKILLS:
+    for name in names:
         source, target = library_root() / name, destination / name
         if target.exists():
             # A partial install is repaired without overwriting existing files.

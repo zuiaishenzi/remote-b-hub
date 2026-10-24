@@ -15,6 +15,8 @@ DEFAULTS = {
     "start_at_login": False, "sw_start_timeout": 180,
     "interop_dir": "", "screenshots_enabled": False, "capture_on_error": True,
     "allow_sw_scripts": False,
+    "blender_exe": "", "blender_output_dir": r"D:\codex\blender-output", "blender_port": 18766,
+    "auto_start_blender": True, "allow_blender_control": False, "blender_images_enabled": False,
 }
 
 
@@ -60,6 +62,13 @@ def validate_config(config):
     for key, suffix in (("part_template", ".prtdot"), ("assembly_template", ".asmdot")):
         if config[key] and Path(config[key]).suffix.lower() != suffix:
             raise ValueError(f"{key} 应指向 {suffix} 模板")
+    port = config.get('blender_port', 18766)
+    if type(port) is not int or not 1024 <= port <= 65535:
+        raise ValueError('Blender 本机桥接端口必须在 1024–65535 之间')
+    if config.get('blender_exe') and Path(config['blender_exe']).name.lower() != 'blender.exe':
+        raise ValueError('Blender 程序位置应指向 blender.exe')
+    if config.get('blender_output_dir') and not Path(config['blender_output_dir']).is_absolute():
+        raise ValueError('Blender 输出目录必须为绝对路径')
     if config["sw_exe"] and Path(config["sw_exe"]).suffix.lower() != ".exe":
         raise ValueError("SOLIDWORKS 程序位置应为 .exe 文件")
 

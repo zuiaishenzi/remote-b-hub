@@ -180,6 +180,16 @@ def run_worker(directory):
                 state(stage, detail=redact(detail, config['token'])[:300])
             try:
                 handle_solidworks_request(config, directory, local_progress, stop_file.exists)
+                blender_request = directory / 'start-blender.request'
+                if blender_request.exists() and not stop_file.exists():
+                    request = json.loads(blender_request.read_text(encoding='utf-8'))
+                    blender_request.unlink()
+                    created = request.get('created')
+                    if type(created) in (int, float) and -30 <= time.time() - created <= 300:
+                        from blender_control import execute_blender
+                        result = execute_blender({'action': 'start'}, config, directory, local_progress)
+                        local_progress('blender_ready', 'Blender 已连接，版本 ' + result['session']['blender_version'])
+
             except Exception:
                 trace = redact(traceback.format_exc(limit=12), config['token'])
                 log('本地启动 SOLIDWORKS 失败：' + trace)
@@ -233,6 +243,9 @@ def run_worker(directory):
                     elif job["operation"] == "sw_script":
                         from sw_script import execute_script
                         result = execute_script(job["params"], config, directory, progress)
+                    elif job["operation"] == "blender_control":
+                        from blender_control import execute_blender
+                        result = execute_blender(job["params"], config, directory, progress, job_id)
                     elif job["operation"] == "cad_control":
                         from cad_control import execute_control
                         result = execute_control(job["params"], config, directory, progress, stop_file.exists)
@@ -242,10 +255,14 @@ def run_worker(directory):
                     else:
                         result = status if job["operation"] == "solidworks_status" else execute(job["operation"], job["params"])
                     stream.flush()
+                if job["operation"] == "blender_control":
+                    result = json.loads(redact(json.dumps(result, ensure_ascii=False), config["token"]))
                 result["agent_log_tail"] = history[-20:]
                 result["executor"] = version
                 if job["operation"] == "system_info":
-                    result["capabilities"] = {"sw_script": True, "cad_control": True, "allow_sw_scripts": bool(config.get("allow_sw_scripts")),
+                    result["capabilities"] = {"sw_script": True, "cad_control": True, "blender_control": True,
+                                              "allow_blender_control": bool(config.get("allow_blender_control")),
+                                              "blender_images_enabled": bool(config.get("blender_images_enabled")), "allow_sw_scripts": bool(config.get("allow_sw_scripts")),
                                               "screenshots_enabled": bool(config.get("screenshots_enabled")),
                                               "cad_paused": (directory / "cad-state-unknown.json").exists()}
                 answer = {"ok": True, "value": result}
@@ -257,8 +274,8 @@ def run_worker(directory):
                           "diagnostics": {"stage": current_stage, "traceback": trace[-5000:],
                                           "operation": job["operation"], "log_tail": history[-20:],
                                           "executor": version}}
-                if job["operation"] == "sw_script" and hasattr(exc, 'report'):
-                    answer['diagnostics']['script'] = exc.report
+                if job["operation"] in ("sw_script", "blender_control") and hasattr(exc, 'report'):
+                    answer['diagnostics']['blender' if job['operation'] == 'blender_control' else 'script'] = json.loads(redact(json.dumps(exc.report, ensure_ascii=False), config['token']))
                 if config.get("screenshots_enabled") and config.get("capture_on_error") and job["operation"] in CAD_OPERATIONS:
                     try:
                         from screen_capture import capture_and_upload

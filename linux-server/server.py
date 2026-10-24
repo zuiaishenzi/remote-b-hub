@@ -21,6 +21,7 @@ from sw_schema import validate_recipe
 from control_schema import validate_document_request
 from script_schema import validate_script_request
 from cad_control_schema import validate_cad_control
+from blender_schema import validate_blender_request
 from artifact_store import ArtifactStore, MAX_IMAGE_BYTES
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -31,7 +32,7 @@ if len(A_TOKEN) < 32 or len(B_TOKEN) < 32 or secrets.compare_digest(A_TOKEN, B_T
     raise RuntimeError('Set independent HUB_A_TOKEN and HUB_B_TOKEN (minimum 32 characters each)')
 
 VALID_OPERATIONS = {'ping', 'system_info', 'solidworks_status', 'create_blank_part', 'create_box', 'sw_recipe',
-                    'sw_document', 'screenshot', 'sw_script', 'cad_control'}
+                    'sw_document', 'screenshot', 'sw_script', 'cad_control', 'blender_control'}
 
 
 def init_db():
@@ -125,7 +126,7 @@ artifacts = ArtifactStore(DB_PATH, os.environ.get('HUB_ARTIFACT_DIR', str(DB_PAT
 @app.get('/health')
 def health():
     return {'status': 'ok', 'service': 'pc-b-relay', 'protocol_version': 2,
-            'capabilities': ['sw_document', 'screenshot', 'artifacts', 'sw_script', 'cad_control']}
+            'capabilities': ['sw_document', 'screenshot', 'artifacts', 'sw_script', 'cad_control', 'blender_control']}
 
 
 @app.get('/api/status')
@@ -179,6 +180,11 @@ def submit_job(payload: JobRequest, authorization: str | None = Header(default=N
     elif payload.operation == 'sw_script':
         try:
             validate_script_request(payload.params)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    elif payload.operation == 'blender_control':
+        try:
+            validate_blender_request(payload.params)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
     elif payload.operation == 'cad_control':

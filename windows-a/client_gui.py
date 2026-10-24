@@ -77,6 +77,10 @@ class ClientWindow:
         from script_window import ScriptWindow
         return ScriptWindow(self)
 
+    def open_blender(self):
+        from blender_window import BlenderWindow
+        return BlenderWindow(self)
+
     def open_skills(self):
         from cad_skill_window import SkillWindow
         return SkillWindow(self)
@@ -186,7 +190,7 @@ class ClientWindow:
                     value.get('job_id','')[:18], 'good' if status=='done' else ('bad' if status=='error' else 'busy'))
                 result = (value.get('result') or {}).get('value',{})
                 sw = result if result.get('connected') else result.get('after',{})
-                if sw.get('connected'):
+                if value.get('operation') != 'blender_control' and sw.get('connected'):
                     self.sw_card.set('已连接', 'COM '+str(sw.get('revision','未知'))+' · '+time.strftime('%H:%M:%S')+' 查询', 'good')
                 if status=='error':
                     self.shell.footer.set('任务失败 · 请在日志页查看完整诊断')
@@ -201,7 +205,7 @@ class ClientWindow:
                         picture.thumbnail((1100, 750))
                         photo = ImageTk.PhotoImage(picture.copy())
                     window = tk.Toplevel(self.root)
-                    window.title('SW 截图 — ' + value['sha256'][:12])
+                    window.title('模型图像 — ' + value['sha256'][:12])
                     label = ttk.Label(window, image=photo)
                     label.image = photo
                     label.pack()
@@ -245,6 +249,10 @@ def main():
             script_window.window.withdraw()
             control_window = client_window.open_cad_control()
             control_window.window.withdraw()
+            blender_window = client_window.open_blender()
+            blender_window.window.withdraw()
+            assert len(blender_window.entries) == 218
+            install_project_skills(directory, names=('remote-b-blender',))
             install_project_skills(directory)
             from desktop_config import protect_token, unprotect_token
             assert unprotect_token(protect_token('a-side-build-test')) == 'a-side-build-test'

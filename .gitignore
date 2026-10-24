@@ -31,3 +31,11 @@ cad-state-unknown.json
 *.SLDASM
 *.SLDDRW
 *.swp
+
+# Blender bridge runtime secrets, audit, and generated models
+blender-bridge.json
+blender-state-unknown.json
+blender-runs/
+start-blender.request
+*.blend
+*.blend1

@@ -1,8 +1,10 @@
 # Remote B Hub
 
-桌面界面升级：[首页 / 日志 / 设置三页导航](docs/desktop-interface.md)，A、B 统一布局、状态卡片与应用图标；连接配置自动沿用，本次无需更新 NAS。
+新增：[A 控制 B 的 Blender](docs/blender-control.md)：接入 RFingAdam 固定版本指令目录与 bpy 脚本，独立权限、按需启动、场景/文件/图像反馈、超时暂停恢复。现共 30 个 MCP 工具；本次需要更新 NAS、A 桥接和 B EXE，基础建模不需要新隧道或外部 AI Key。
 
-新增：[A 端启动 SW 和安全解除 CAD 暂停](docs/remote-cad-recovery.md)：21 个 MCP 工具，A 桌面“CAD 管理”；旧脚本进程仍运行时拒绝恢复，支持从 A 处理已结束任务留下的暂停。
+桌面界面升级：[首页 / 日志 / 设置三页导航](docs/desktop-interface.md)，A、B 统一布局、状态卡片与应用图标；连接配置自动沿用；单独的界面更新不要求 NAS 升级，新增 Blender 协议则需要。
+
+新增：[A 端启动 SW 和安全解除 CAD 暂停](docs/remote-cad-recovery.md)：原 21 个通信/SW MCP 工具保留，A 桌面“CAD 管理”；旧脚本进程仍运行时拒绝恢复，支持从 A 处理已结束任务留下的暂停。
 
 新增：[A 上的 Codex 分步控制 B 的 SW2023](docs/remote-sw-scripting.md)。
 提供当前模型状态读取和 B 本地启用的 Python COM 脚本通道，支持执行前后快照、日志、traceback 与超时暂停；A 桌面新增脚本窗口。NAS、A MCP 源码和 B 客户端均需更新，脚本权限默认关闭。

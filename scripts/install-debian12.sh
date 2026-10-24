@@ -12,7 +12,7 @@ if ! id remotebhub >/dev/null 2>&1; then
 fi
 install -d -o remotebhub -g remotebhub -m 0750 /opt/remote-b-hub
 install -d -o root -g root -m 0700 /etc/remote-b-hub
-for source_file in server.py sw_schema.py control_schema.py script_schema.py cad_control_schema.py artifact_store.py requirements.txt; do
+for source_file in server.py sw_schema.py control_schema.py script_schema.py cad_control_schema.py blender_schema.py artifact_store.py requirements.txt; do
   install -o remotebhub -g remotebhub -m 0644 "$ROOT_DIR/linux-server/$source_file" "/opt/remote-b-hub/$source_file"
 done
 if [ ! -e /etc/remote-b-hub/hub.env ]; then

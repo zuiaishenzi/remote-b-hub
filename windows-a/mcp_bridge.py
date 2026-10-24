@@ -26,6 +26,108 @@ def request(method, path, body=None):
 mcp = MCPServer('PC-B-Remote-Tools')
 
 
+def blender_job(params):
+    from blender_schema import validate_blender_request
+    try:
+        validate_blender_request(params)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return request('POST', '/api/jobs', {'operation': 'blender_control', 'params': params})
+
+
+@mcp.tool()
+def computer_b_blender_tools(name: str | None = None) -> dict:
+    """Read the pinned RFingAdam Blender command catalog; pass a name for full JSON schema.
+    Local discovery only, not proof of runtime support. Commands execute on B through
+    computer_b_blender_command. AI/asset integrations need their own setup/credentials.
+    """
+    from blender_control import catalog
+    try:
+        return catalog(name)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+
+
+@mcp.tool()
+def computer_b_blender_status() -> dict:
+    """Check B's authenticated Blender bridge without starting Blender. Poll computer_b_job.
+    B agent must be online, NAS/B upgraded. Separate from SolidWorks COM/status.
+    """
+    return blender_job({'action': 'status'})
+
+
+@mcp.tool()
+def computer_b_start_blender() -> dict:
+    """Start Blender on B with bundled authenticated bridge; reuse a connected session.
+    Never kills an existing Blender or opens duplicate instances. Existing Blender without
+    bridge requires enabling the exported add-on on B. Poll computer_b_job.
+    """
+    return blender_job({'action': 'start'})
+
+
+@mcp.tool()
+def computer_b_blender_scene() -> dict:
+    """Read actual B Blender scene/path/dirty flag/objects/modifiers/units (bounded to 80).
+    May auto-start if B settings allow. Does not save or modify the scene. Poll the job.
+    """
+    return blender_job({'action': 'inspect'})
+
+
+@mcp.tool()
+def computer_b_blender_command(name: str, arguments: dict | None = None, timeout_seconds: int = 60) -> dict:
+    """Run a pinned upstream Blender command on B, with local full-trust opt-in.
+    First query computer_b_blender_tools(name) for parameter schema. Full user rights,
+    NOT sandboxed. May modify/delete/save; only do what user requested. No automatic
+    retries. Timeout/disconnect pauses Blender controls; inspect state/late receipt.
+    Upstream rotations have inconsistent conventions: inspect schema/code or use bpy.
+    Return is only job_id; poll computer_b_job for actual results/traceback.
+    """
+    from blender_control import catalog
+    try:
+        catalog(name)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return blender_job({'action': 'tool', 'name': name, 'arguments': arguments or {}, 'timeout_seconds': timeout_seconds})
+
+
+@mcp.tool()
+def computer_b_blender_script(code: str, timeout_seconds: int = 60) -> dict:
+    """Run full-trust bpy Python on B's Blender MAIN THREAD, only when B enables it.
+    Namespace: bpy, snapshot(), output_dir, log(); set JSON dict result. Coordinates
+    are Blender units, angles radians; inspect scene.unit_settings before mm conversion.
+    Does not automatically save. Prefer separate new scene and NEW output file.
+    Timeout/disconnect leaves Blender open and pauses commands; do not retry blindly.
+    Poll computer_b_job; inspect before/after/log_tail/traceback and real saved file evidence.
+    """
+    return blender_job({'action': 'script', 'code': code, 'timeout_seconds': timeout_seconds})
+
+
+@mcp.tool()
+def computer_b_blender_state() -> dict:
+    """Read Blender pause ID, audit and any late terminal receipt without contacting bpy.
+    can_resume means old execution returned, not that its model is valid. Poll the job.
+    """
+    return blender_job({'action': 'state'})
+
+
+@mcp.tool()
+def computer_b_resume_blender(pause_id: str, acknowledge_state: bool) -> dict:
+    """Resume exact Blender pause after reading late result and inspecting scene/B.
+    Requires B opt-in and a terminal receipt; never cancels running bpy or force unlocks.
+    Model correctness is not implied. Do not repeat failed script unchanged. Poll job.
+    """
+    return blender_job({'action': 'resume', 'pause_id': pause_id, 'acknowledge_state': acknowledge_state})
+
+
+@mcp.tool()
+def computer_b_blender_image(file: str) -> dict:
+    """Upload an existing PNG/JPEG from B's configured Blender output directory.
+    Simple filename only; requires B Blender image opt-in. Does not capture desktop.
+    Render/save explicitly first, then poll this job and download/open artifact on A.
+    """
+    return blender_job({'action': 'image', 'file': file})
+
+
 @mcp.tool()
 def computer_b_modeling_skills(skill: str | None = None) -> dict:
     """Read reviewed SolidWorks 2023 skills, template parameters and capability limits.

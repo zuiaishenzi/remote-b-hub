@@ -17,6 +17,11 @@ def source_info():
         if path.is_file():
             digest.update(path.name.encode("utf-8") + b"\0")
             digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
+    for path in sorted((directory.parent / 'third_party' / 'rfingadam').rglob('*')):
+        if path.is_file() and '__pycache__' not in path.parts and path.suffix != '.pyc':
+            digest.update(str(path.relative_to(directory.parent)).replace('\\','/').encode() + b'\0')
+            digest.update(path.read_bytes().replace(b'\r\n', b'\n'))
+    digest.update((directory / 'blender-tools.json').read_bytes())
     return {"executor_sha256": digest.hexdigest(), "mode": "source"}
 
 

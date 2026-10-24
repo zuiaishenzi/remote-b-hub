@@ -59,6 +59,7 @@ class Launcher:
         self.log_position = 0
         self.last_restart = 0
         self.smoke = smoke
+        self.starting_blender = False
         self.starting_sw = False
         self.worker_log = self.directory / "agent.log"
         self.gui_log = self.directory / "launcher.log"
@@ -119,7 +120,7 @@ class Launcher:
     def values(self):
         config = dict(self.config)
         for key, variable in self.variables.items():
-            config[key] = variable.get().strip() if key in ("server_url", "output_dir", "part_template", "assembly_template", "sw_exe", "interop_dir") else variable.get()
+            config[key] = variable.get().strip() if key in ("server_url", "output_dir", "part_template", "assembly_template", "sw_exe", "interop_dir", "blender_exe", "blender_output_dir") else variable.get()
         config["server_url"] = config["server_url"].rstrip("/")
         self.secret = config["token"]
         return config
@@ -168,6 +169,9 @@ class Launcher:
         self.sync_agent_control(running)
 
     def start(self):
+        if self.starting_blender:
+            self.message('正在本地启动 Blender，请等待完成后再启动任务代理。')
+            return
         if self.process and self.process.poll() is None:
             self.message("代理已运行。")
             return
@@ -199,6 +203,7 @@ class Launcher:
     def stop(self):
         self.want_agent = False
         (self.directory / 'start-sw.request').unlink(missing_ok=True)
+        (self.directory / 'start-blender.request').unlink(missing_ok=True)
         (self.directory / "stop.request").touch()
         self.message("已请求停止；等待当前建模/网络调用完成，不强杀 SOLIDWORKS。")
 
@@ -250,6 +255,40 @@ class Launcher:
             finally:
                 self.starting_sw = False
                 pythoncom.CoUninitialize()
+        threading.Thread(target=run, daemon=True).start()
+
+    def export_blender_addon(self):
+        from tkinter import filedialog, messagebox
+        path = filedialog.asksaveasfilename(parent=self.root, title='导出 Blender 桥接插件',
+                    initialfile='remote-b-blender.zip', defaultextension='.zip', filetypes=[('Blender add-on', '*.zip')])
+        if not path:
+            return
+        try:
+            from blender_control import export_addon
+            result = export_addon(self.config, self.directory, path)
+            self.message('已导出桥接插件：' + result['addon'] + '；在 Blender 偏好设置中安装并启用。使用已保存的设置。')
+        except Exception as exc:
+            messagebox.showerror('导出失败', str(exc), parent=self.root)
+
+    def start_blender(self):
+        if self.starting_blender:
+            return
+        if (self.process and self.process.poll() is None) or worker_running():
+            from desktop_worker import write_json
+            write_json(self.directory / 'start-blender.request', {'created': time.time()})
+            self.message('已请求代理启动 / 检查 Blender；将在当前任务完成后执行，使用已保存的设置。')
+            return
+        self.starting_blender = True
+        def run():
+            try:
+                from blender_control import execute_blender
+                result = execute_blender({'action': 'start'}, self.config, self.directory,
+                                         lambda stage, detail: self.message(detail))
+                self.message('Blender：' + json.dumps(result, ensure_ascii=False))
+            except Exception as exc:
+                self.message('Blender 启动 / 检查失败：' + str(exc))
+            finally:
+                self.starting_blender = False
         threading.Thread(target=run, daemon=True).start()
 
     def tick(self):
@@ -363,6 +402,13 @@ def main():
             source_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "interop"
             assert (source_dir / "SwInteropController.cs").is_file()
             assert (source_dir / "BuildInterop.ps1").is_file()
+            from blender_control import catalog, export_addon
+            assert catalog()['count'] == 218
+            # Exercise bundled plain Python sources and AGPL addon data without bpy.
+            exported = export_addon({**DEFAULTS, 'output_dir': str(directory / 'blender-output'),
+                                      'blender_output_dir': str(directory / 'blender-output')},
+                                     directory, directory / 'bridge-self-test.zip')
+            assert exported['bytes'] > 10000
             (directory / "self-test.json").write_text(json.dumps({"ok": True, "frozen": bool(getattr(sys, "frozen", False))}), encoding="utf-8")
             return 0
         if args.worker:

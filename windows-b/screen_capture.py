@@ -54,6 +54,10 @@ def capture_and_upload(job_id, config):
     if not config.get('screenshots_enabled', False):
         raise PermissionError('B has not enabled SOLIDWORKS screenshot upload in its local settings')
     content, mime = capture_solidworks_window()
+    return upload_image(job_id, config, content, mime)
+
+
+def upload_image(job_id, config, content, mime):
     request = urllib.request.Request(config['server_url'].rstrip('/') + f'/agent/jobs/{job_id}/artifacts',
         data=content, method='POST', headers={'Authorization': 'Bearer ' + config['token'], 'Content-Type': mime})
     with urllib.request.urlopen(request, timeout=20) as response:
