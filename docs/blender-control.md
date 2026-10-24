@@ -88,3 +88,33 @@ B 配置目录下有 `agent.log`、`blender-start.log`、`blender-runs` 的 requ
 `tests/blender_integration.py` 在隔离工厂场景中运行真实官方 Blender：鉴权 NAS 入队 → B 执行 → 实际场景读取 → 上游创建物体/材质/修改器 → bpy 保存新 `.blend` → 渲染 → 鉴权附件取回 → 重新打开检查对象 → 人为错误 traceback → 人为只读延时超时 → 迟到终态 → 精确暂停恢复。支持用打包 EXE 作为实际 worker 再执行同一流程，CI 在发布前运行此模式。
 
 这验证了本地真实 Blender 与协议/EXE，不等于 B 的 Blender 已部署、某个复杂模型质量达标或全部 218 个上游指令可用。B 实机验收需另外检查真实版本、任务 ID、实际文件路径/大小与画面。
+
+
+## B 端实机验收：2026-10-24
+
+以下为真实 A → NAS → Windows B 结果，不是本地模拟。B 执行器 `desktop-15-1` / `671d8c95880f408566c0e95c3fd0d82e7861a1e2`，Blender `4.2.23 LTS`。A 已成功从未启动状态启动 B Blender，桥接源码 SHA256 匹配，脚本与图像权限均已开启。
+
+验收在新的 `B_Blender_Acceptance_20261024_ff2897ca` 场景内执行，原默认 `Scene` 及 Cube / Camera / Light 保留。未覆盖用户已有文件。
+
+| 检查 | 真实任务 ID | 结果 |
+|---|---|---|
+| 启动并连接 B Blender | `2df7de94-d124-4583-849e-e95bc03f8705` | done，4.2.23 LTS |
+| 独立场景 | `811b1a3a-22f1-482f-87cc-cead1121f03f` | done |
+| 上游 object_create | `0147fff4-57d6-460f-8735-fccf410b78ff` | done |
+| 上游 material_create | `cb7cf188-e863-44fd-a91f-a610bb6e3373` | done |
+| 上游 material_set_color | `fcd264f1-43c7-4ac1-a0c8-548fa8820b97` | done |
+| 上游 material_assign | `f0aaa8ba-5d60-4d73-b150-bc57a4b520e5` | done |
+| 上游 modifier_add | `be4b8b90-4d7b-4cb1-95ab-bd0b481b62c1` | done，BEVEL |
+| 尺寸核验和保存 | `3cdead5b-3ca6-46b3-81aa-4339ec386c99` | done |
+| 上游 render_image | `247d6697-a862-4afa-84e7-6195f682de54` | done，Cycles CPU，640×480 |
+| 从磁盘加载副本并检查几何 | `afdb93ba-1012-4e47-8d33-06886f7d033b` | done |
+| 图像上传并在 A 下载查看 | `ef9e7ef3-9368-42e2-ad1f-19ac4b63292e` | done，JPEG 哈希校验通过 |
+| 最终暂停状态 | `46dbb286-c425-477c-af17-bb89651c1fbd` | done，paused=false |
+
+实际文件：`D:\codex\blender-output\B_Blender_Acceptance_20261024_ff2897ca.blend`，**66,673 字节**，SHA256 `78c0468a0fc9691ac77e3e556993ef7d0623477a4485eb02f25a51eb350eccbf`。
+
+渲染原图：`D:\codex\blender-output\B_Blender_Acceptance_20261024_ff2897ca.png`，267,043 字节。A 下载的是经受保护图像通道转换的 640×480 JPEG，9,959 字节，SHA256 `79ebd57662a5429643b8177dcf8497d35a61e6722e8a767856664430c6088375`；已实际打开查看，显示青色倒角长方体。附件按既有策略 48 小时过期，B 原图不受此附件过期影响。
+
+从保存文件单独加载副本检查后，确认尺寸 **40×30×20 mm**，倒角宽 **2 mm**、3 段，材质存在；依赖图求值后的网格 **98 面、0 条非流形边**，测量体积 **23,653.618 mm³**。验收先显式执行 `view_layer.update()`，按场景单位换算，不以刚修改缩放时尚未更新的尺寸缓存作为证据。验证副本已移除，原场景与验收场景保留，未关闭 Blender。
+
+本次验证基础建模、Python、保存/磁盘复核、CPU 渲染和鉴权图片往返。未逐一验证 218 条指令，也未在真实 B 上故意触发超时；超时恢复目前有隔离测试/CI 证据。动画、骨骼、外部 AI、复杂 Geometry Nodes 和实时视频不属于本次实机通过范围。

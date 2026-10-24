@@ -1,6 +1,6 @@
 # Remote B Hub
 
-新增：[A 控制 B 的 Blender](docs/blender-control.md)：接入 RFingAdam 固定版本指令目录与 bpy 脚本，独立权限、按需启动、场景/文件/图像反馈、超时暂停恢复。现共 30 个 MCP 工具；本次需要更新 NAS、A 桥接和 B EXE，基础建模不需要新隧道或外部 AI Key。
+新增：[A 控制 B 的 Blender](docs/blender-control.md)：接入 RFingAdam 固定版本指令目录与 bpy 脚本，独立权限、按需启动、场景/文件/图像反馈、超时暂停恢复。现共 30 个 MCP 工具；本次需要更新 NAS、A 桥接和 B EXE，基础建模不需要新隧道或外部 AI Key。 B 端 Blender 4.2.23 已完成基础建模、保存复核及图像往返实机验收，详见同页记录。
 
 桌面界面升级：[首页 / 日志 / 设置三页导航](docs/desktop-interface.md)，A、B 统一布局、状态卡片与应用图标；连接配置自动沿用；单独的界面更新不要求 NAS 升级，新增 Blender 协议则需要。
 
