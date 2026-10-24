@@ -71,60 +71,8 @@ class Launcher:
         self.secret = self.config["token"]
         from desktop_version import runtime_info
         version = runtime_info()
-        root.title("Remote B Hub — 电脑 B 启动器 — " + version["executor_sha256"][:12])
-        root.geometry("1020x780")
-        root.minsize(880, 680)
-        body = ttk.Frame(root, padding=12)
-        body.pack(fill="both", expand=True)
-        ttk.Label(body, text="Remote B Hub · 配置、状态与任务日志", font=("Microsoft YaHei UI", 15, "bold")).pack(anchor="w")
-        ttk.Label(body, text="服务指本机任务代理；建模在当前 Windows 登录会话执行。Token 使用当前用户加密保存。").pack(anchor="w", pady=(4, 10))
-        fields = ttk.LabelFrame(body, text="连接与建模设置（停止代理后保存修改）", padding=10)
-        fields.pack(fill="x")
-        fields.columnconfigure(1, weight=1)
-        self.variables = {}
-        labels = (("server_url", "NAS 服务地址", None), ("token", "B Token / HUB_B_TOKEN", None),
-                  ("output_dir", "CAD 输出目录", "directory"), ("part_template", "零件模板 (.prtdot)", "file"),
-                  ("assembly_template", "装配模板 (.asmdot)", "file"), ("sw_exe", "SOLIDWORKS 程序", "file"),
-                  ("interop_dir", "Interop 目录（留空自动定位）", "directory"))
-        for row, (key, label, browse) in enumerate(labels):
-            ttk.Label(fields, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
-            variable = tk.StringVar(value=self.config[key])
-            self.variables[key] = variable
-            ttk.Entry(fields, textvariable=variable, show="*" if key == "token" else "").grid(row=row, column=1, sticky="ew", pady=4)
-            if browse:
-                ttk.Button(fields, text="浏览…", command=lambda k=key, b=browse: self.browse(k, b)).grid(row=row, column=2, padx=(6, 0))
-        options = ttk.Frame(body)
-        options.pack(fill="x", pady=8)
-        for key, label in (("auto_start_sw", "CAD 任务到达时自动启动 SW"), ("auto_start_agent", "打开程序自动启动代理"),
-                           ("auto_restart_agent", "代理意外退出后自动重启"), ("start_at_login", "Windows 登录后驻留")):
-            self.variables[key] = tk.BooleanVar(value=self.config[key])
-            ttk.Checkbutton(options, text=label, variable=self.variables[key]).pack(side="left", padx=(0, 12))
-        controls = ttk.Frame(body)
-        capture_options = ttk.Frame(body)
-        capture_options.pack(fill="x", pady=(0, 6))
-        for key, label in (("screenshots_enabled", "允许上传 SOLIDWORKS 窗口截图（需要 NAS 附件接口）"),
-                           ("capture_on_error", "CAD 失败时自动截图；截图失败保留原错误")):
-            self.variables[key] = tk.BooleanVar(value=self.config[key])
-            ttk.Checkbutton(capture_options, text=label, variable=self.variables[key]).pack(side="left", padx=(0, 12))
-        scripts = ttk.Frame(body)
-        scripts.pack(fill="x", pady=(0, 6))
-        self.variables["allow_sw_scripts"] = tk.BooleanVar(value=self.config["allow_sw_scripts"])
-        ttk.Checkbutton(scripts, text="允许 A 执行完整权限 SW Python 脚本（可修改文件；非沙箱）",
-                        variable=self.variables["allow_sw_scripts"]).pack(side="left")
-        ttk.Button(scripts, text="核对 CAD 状态后解除脚本暂停", command=self.clear_script_pause).pack(side="left", padx=8)
-        controls.pack(fill="x", pady=4)
-        for label, callback in (("保存设置", self.save), ("检查状态", self.check), ("启动 SOLIDWORKS", self.start_sw),
-                                ("启动代理", self.start), ("停止代理（完成当前任务后）", self.stop),
-                                ("打开日志目录", lambda: os.startfile(str(self.directory)))):
-            ttk.Button(controls, text=label, command=callback).pack(side="left", padx=(0, 6))
-        ttk.Button(controls, text="最小化驻留", command=root.iconify).pack(side="left")
-        ttk.Button(controls, text="检查更新", command=self.open_update).pack(side="left", padx=6)
-        self.status = tk.StringVar(value="准备就绪")
-        ttk.Label(body, textvariable=self.status, wraplength=960).pack(anchor="w", pady=(8, 4))
-        self.log_widget = scrolledtext.ScrolledText(body, state="disabled", font=("Consolas", 10), wrap="word")
-        self.log_widget.pack(fill="both", expand=True)
-        ttk.Label(body, text="关闭窗口会退出启动器；代理完成当前任务并回传后停止。驻留请点“最小化驻留”。", foreground="#555555").pack(side="left", pady=(8, 0))
-        ttk.Button(body, text="退出启动器", command=self.quit).pack(side="right", pady=(8, 0))
+        from launcher_view import build_launcher
+        build_launcher(self, version)
         root.protocol("WM_DELETE_WINDOW", self.quit)
         if self.config_error:
             self.message("配置读取失败，请重新填写并保存: " + self.config_error)
@@ -245,15 +193,19 @@ class Launcher:
                 from desktop_worker import sw_status
                 sw = sw_status()
                 self.message(f"SOLIDWORKS：COM 已连接，版本 {sw['revision']}，可见={sw['visible']}")
+                self.health_results.put(("sw", True, sw["revision"]))
             except Exception as exc:
                 self.message("SOLIDWORKS：当前登录会话 COM 未就绪；" + str(exc))
+                self.health_results.put(("sw", False, "当前会话 COM 未就绪"))
             try:
                 request = urllib.request.Request(config["server_url"].rstrip("/") + "/health")
                 with urllib.request.urlopen(request, timeout=8) as response:
                     health = json.load(response)
                 self.message(f"NAS 健康检查：{health.get('status')}（Token 是否有效以代理轮询结果为准）")
+                self.health_results.put(("nas", health.get("status") == "ok", "服务可达；鉴权以代理轮询为准"))
             except Exception as exc:
                 self.message("NAS 健康检查失败：" + str(exc))
+                self.health_results.put(("nas", False, "健康检查失败，详见日志"))
             for key in ("part_template", "assembly_template", "sw_exe"):
                 self.message(f"路径检查 {key}: {'存在' if Path(config[key]).is_file() else '未找到'}")
         threading.Thread(target=run, daemon=True).start()
@@ -276,6 +228,7 @@ class Launcher:
                 from desktop_worker import ensure_solidworks
                 result = ensure_solidworks(config, lambda stage, detail: self.message(detail))
                 self.message("SOLIDWORKS 已就绪，版本 " + result["revision"])
+                self.health_results.put(("sw", True, result["revision"]))
             except Exception as exc:
                 self.message("SOLIDWORKS 启动失败：" + str(exc))
             finally:
@@ -306,6 +259,7 @@ class Launcher:
                 self.process = None
         running = (self.process is not None and self.process.poll() is None) or worker_running()
         description = "代理未运行"
+        state = {}
         if running:
             description = "代理进程运行中；等待状态"
             try:
@@ -314,16 +268,29 @@ class Launcher:
                 description = f"代理：{state['stage']} · 状态更新于 {age} 秒前 · {state.get('detail', state.get('error', ''))}"
             except (OSError, ValueError, KeyError):
                 pass
-        self.status.set(description)
+        self.status.set("代理运行中 · 详细状态见日志" if running else "代理未运行 · 可在首页启动")
+        self.runtime_detail.set(redact(description, self.secret))
+        self.job_detail.set("当前任务：" + str(state.get("job_id") or "无"))
+        self.agent_card.set("停止中" if running and not self.want_agent else ("运行中" if running else "未启动"),
+                            "等待当前任务结束" if running and not self.want_agent else state.get("stage", "等待启动"),
+                            "good" if running else "neutral")
+        if state.get('stage') == 'idle' and state.get('authenticated'):
+            self.nas_card.set('已连接', '代理轮询已通过鉴权', 'good')
+        elif state.get('stage') == 'connection_error':
+            self.nas_card.set('连接异常', '请在日志页查看诊断', 'bad')
+        if state.get('stage') == 'solidworks_ready':
+            self.sw_card.set('已连接', 'SolidWorks COM 已就绪', 'good')
+        while not self.health_results.empty():
+            kind, ready, detail = self.health_results.get_nowait()
+            if kind == 'sw':
+                self.sw_card.set('已连接' if ready else '未就绪', ('COM '+detail if ready else detail)+' · '+time.strftime('%H:%M:%S')+' 检查', 'good' if ready else 'warn')
+            else:
+                self.nas_card.set('服务可达' if ready else '连接异常', detail, 'good' if ready else 'bad')
         while not self.messages.empty():
             message = self.messages.get_nowait()
             line = time.strftime("%H:%M:%S ") + message + "\n"
-            self.log_widget.configure(state="normal")
-            self.log_widget.insert("end", line)
-            if int(self.log_widget.index("end-1c").split(".")[0]) > 2000:
-                self.log_widget.delete("1.0", "500.0")
-            self.log_widget.see("end")
-            self.log_widget.configure(state="disabled")
+            line = redact(line, self.secret)
+            self.log_view.append(line)
             # Worker history has its own rotation; bound the UI event file as well.
             if self.gui_log.exists() and self.gui_log.stat().st_size > 2_000_000:
                 self.gui_log.replace(self.gui_log.with_suffix(".previous.log"))

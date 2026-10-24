@@ -7,6 +7,7 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'windows-b'))
@@ -15,7 +16,7 @@ from relay_client import RelayClient
 
 
 class ClientWindow:
-    def __init__(self, root, directory):
+    def __init__(self, root, directory, smoke=False):
         import tkinter as tk
         from tkinter import ttk, scrolledtext
         self.root, self.directory = root, Path(directory)
@@ -29,45 +30,44 @@ class ClientWindow:
             stored = json.loads(path.read_text(encoding='utf-8'))
             values.update(server_url=stored['server_url'], workspace=stored['workspace'], token=unprotect_token(stored['token_dpapi']))
         self.variables = {key: tk.StringVar(value=value) for key, value in values.items()}
+        self.saved_connection = {'server_url': values['server_url'], 'token': values['token']}
         self.job_id = tk.StringVar()
         self.artifact_id = tk.StringVar()
-        root.title('Remote B Hub — A 端控制台')
-        root.geometry('1000x760')
-        panel = ttk.Frame(root, padding=12)
-        panel.pack(fill='both', expand=True)
-        ttk.Label(panel, text='A 端：安全配置、启动 Codex、任务与截图', font=('Microsoft YaHei UI', 15, 'bold')).pack(anchor='w', pady=(0, 12))
-        fields = ttk.Frame(panel)
-        fields.pack(fill='x')
-        fields.columnconfigure(1, weight=1)
-        for row, (key, label) in enumerate((('server_url', 'NAS 服务入口'), ('token', 'A Token / HUB_A_TOKEN'), ('workspace', 'A 仓库工作目录'))):
-            ttk.Label(fields, text=label).grid(row=row, column=0, sticky='w', padx=(0, 12), pady=4)
-            ttk.Entry(fields, textvariable=self.variables[key], show='*' if key == 'token' else '').grid(row=row, column=1, sticky='ew', pady=4)
-        buttons = ttk.Frame(panel)
-        buttons.pack(fill='x', pady=8)
-        for label, callback in (('保存配置', self.save), ('启动 Codex', self.start_codex),
-                                ('建模技能', self.open_skills),
-                                ('SW 脚本', self.open_script),
-                                ('检查更新', self.open_update),
-                                ('检查 B 在线状态', lambda: self.call('status', lambda c: c.request('GET', '/api/status'))),
-                                ('请求 SW 截图', lambda: self.call('submitted', lambda c: c.request('POST', '/api/jobs', {'operation': 'screenshot'})))):
-            ttk.Button(buttons, text=label, command=callback).pack(side='left', padx=(0, 8))
-        row = ttk.Frame(panel)
-        row.pack(fill='x', pady=6)
-        ttk.Label(row, text='任务 ID').pack(side='left')
-        ttk.Entry(row, textvariable=self.job_id, width=44).pack(side='left', padx=6)
-        ttk.Button(row, text='读取任务/错误', command=self.read_job).pack(side='left', padx=6)
-        ttk.Button(row, text='列出截图附件', command=self.list_images).pack(side='left')
-        ttk.Button(row, text='CAD 管理', command=self.open_cad_control).pack(side='left', padx=6)
-        row = ttk.Frame(panel)
-        row.pack(fill='x', pady=6)
-        ttk.Label(row, text='截图附件').pack(side='left')
-        self.artifacts = ttk.Combobox(row, textvariable=self.artifact_id, width=55, state='readonly')
-        self.artifacts.pack(side='left', padx=6)
-        ttk.Button(row, text='下载并查看', command=self.open_image).pack(side='left')
-        self.output = scrolledtext.ScrolledText(panel, wrap='word', font=('Consolas', 10), state='disabled')
-        self.output.pack(fill='both', expand=True, pady=8)
-        ttk.Label(panel, text='截图通过 A Token 下载到本机；实时视频/远控需另行配置。启动 Codex 需已有 CLI 与 pc-b 注册。').pack(anchor='w')
+        self._status_busy = False
+        self.smoke = smoke
+        from client_view import build_client
+        build_client(self)
+        if not smoke:
+            root.after(500, self.poll_status)
         root.after(200, self.tick)
+
+    def refresh_status(self, saved=False):
+        if self._status_busy:
+            return
+        try:
+            if saved:
+                if not self.saved_connection['server_url'] or len(self.saved_connection['token']) < 32:
+                    raise ValueError('No saved connection')
+                client = RelayClient(self.saved_connection['server_url'], self.saved_connection['token'])
+            else:
+                client = self.client()
+        except Exception:
+            self.connection_card.set('未配置', '请前往设置页保存连接信息', 'warn')
+            self.shell.footer.set('尚未配置连接 · 请先完成设置')
+            return
+        self._status_busy = True
+        def run():
+            try:
+                self.queue.put(('status', client.request('GET', '/api/status')))
+            except Exception as exc:
+                self.queue.put(('connection_error', redact(str(exc), client.token)))
+            finally:
+                self.queue.put(('status_finished', None))
+        threading.Thread(target=run, daemon=True).start()
+
+    def poll_status(self):
+        self.refresh_status(saved=True)
+        self.root.after(10000, self.poll_status)
 
     def open_cad_control(self):
         from cad_control_window import CadControlWindow
@@ -103,6 +103,7 @@ class ClientWindow:
             temporary = path.with_suffix('.tmp')
             temporary.write_text(json.dumps(stored, ensure_ascii=False, indent=2), encoding='utf-8')
             temporary.replace(path)
+            self.saved_connection = {'server_url': client.server, 'token': client.token}
             self.queue.put(('message', '配置已按当前 Windows 用户加密保存。'))
             return True
         except Exception as exc:
@@ -164,6 +165,31 @@ class ClientWindow:
             kind, value = self.queue.get_nowait()
             if kind == 'submitted':
                 self.job_id.set(value['job_id'])
+                self.task_card.set('已排队', value['job_id'][:18], 'busy')
+                self.shell.footer.set('任务已提交 · 请读取真实结果')
+            elif kind == 'status_finished':
+                self._status_busy = False
+                continue
+            elif kind == 'status':
+                online = value.get('online', False)
+                self.connection_card.set('在线' if online else '离线',
+                    f"等待任务 {value.get('queued_jobs', 0)} 个 · 心跳 {value.get('last_seen_seconds_ago')} 秒前" if online else '未收到近期代理心跳',
+                    'good' if online else 'warn')
+                self.shell.footer.set('B 在线 · '+time.strftime('%H:%M:%S')+' 检查' if online else 'B 离线 · 请检查 B 端代理')
+                continue
+            elif kind == 'connection_error':
+                self.connection_card.set('连接异常', '详见日志；检查 NAS 地址与凭据', 'bad')
+                self.shell.footer.set('连接检查失败 · 详见日志')
+            elif kind == 'job':
+                status = value.get('status', 'unknown')
+                self.task_card.set({'done':'已完成','error':'失败','running':'执行中','queued':'已排队'}.get(status,status),
+                    value.get('job_id','')[:18], 'good' if status=='done' else ('bad' if status=='error' else 'busy'))
+                result = (value.get('result') or {}).get('value',{})
+                sw = result if result.get('connected') else result.get('after',{})
+                if sw.get('connected'):
+                    self.sw_card.set('已连接', 'COM '+str(sw.get('revision','未知'))+' · '+time.strftime('%H:%M:%S')+' 查询', 'good')
+                if status=='error':
+                    self.shell.footer.set('任务失败 · 请在日志页查看完整诊断')
             elif kind == 'artifacts':
                 identities = [a['id'] for a in value['artifacts']]
                 self.artifacts['values'] = identities
@@ -182,10 +208,10 @@ class ClientWindow:
                 except Exception as exc:
                     value = '图片无法显示：' + str(exc)
             text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=2)
-            self.output.configure(state='normal')
-            self.output.insert('end', redact(text, self.variables['token'].get()) + '\n')
-            self.output.see('end')
-            self.output.configure(state='disabled')
+            text = time.strftime('%H:%M:%S ') + redact(redact(text, self.variables['token'].get()), self.saved_connection['token']) + '\n'
+            self.log_view.append(text)
+            from desktop_ui import append_event_log
+            append_event_log(self.directory / 'client.log', text)
         self.root.after(200, self.tick)
 
 
@@ -204,7 +230,7 @@ def main():
         root = tk.Tk()
         if args.smoke_test:
             root.withdraw()
-        client_window = ClientWindow(root, directory)
+        client_window = ClientWindow(root, directory, smoke=args.smoke_test)
         if args.smoke_test:
             from cad_skills import catalog, plan_part, install_project_skills
             assert len(catalog()['skills']) == 3

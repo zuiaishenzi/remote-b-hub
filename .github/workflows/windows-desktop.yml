@@ -13,6 +13,8 @@ on:
       - 'tests/mcp_skills_smoke.py'
       - 'tests/frozen_desktop_smoke.py'
       - 'scripts/build-desktop.ps1'
+      - 'scripts/generate-desktop-icons.py'
+      - 'assets/**'
       - 'scripts/write-update-manifest.py'
       - 'tests/frozen_update_smoke.py'
       - 'tests/frozen_sw_script_smoke.py'
@@ -41,6 +43,6 @@ jobs:
           $tag = 'desktop-' + $env:GITHUB_RUN_NUMBER + '-' + $env:GITHUB_RUN_ATTEMPT
           & ./.venv-build/Scripts/python.exe scripts/write-update-manifest.py
           if ($LASTEXITCODE -ne 0) { throw 'Update manifest failed' }
-          $notes = 'A-side SW startup and safe CAD pause recovery, 21 MCP tools and desktop CAD management. Live/unknown callers and stale pause IDs cannot be unlocked; startup COM runs in a supervised helper. Update NAS/A MCP source/B EXE together. No tokens/settings embedded. Source: ' + $env:GITHUB_SHA
+          $notes = 'Redesigned A/B desktop: sidebar navigation with Home, Logs and Settings, live status cards, searchable/exportable logs and original multi-size Windows icons. Existing encrypted settings retained; no NAS update required for this UI release. Source: ' + $env:GITHUB_SHA
           gh release create $tag dist/RemoteBHub.exe dist/RemoteBClient.exe dist/update-manifest.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Remote B Hub $tag" --notes $notes --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

@@ -74,7 +74,16 @@ def ensure_solidworks(config, progress, stop_requested=lambda: False):
 def write_json(path, value):
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
-    temporary.replace(path)
+    # Windows readers/AV can briefly deny rename while inspecting the old file.
+    # Retry the atomic replacement, retaining the last complete state meanwhile.
+    for attempt in range(81):
+        try:
+            temporary.replace(path)
+            return
+        except PermissionError:
+            if attempt == 80:
+                raise
+            time.sleep(.025)
 
 
 def request_solidworks_start(directory):

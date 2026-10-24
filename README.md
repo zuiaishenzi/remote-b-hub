@@ -1,5 +1,7 @@
 # Remote B Hub
 
+桌面界面升级：[首页 / 日志 / 设置三页导航](docs/desktop-interface.md)，A、B 统一布局、状态卡片与应用图标；连接配置自动沿用，本次无需更新 NAS。
+
 新增：[A 端启动 SW 和安全解除 CAD 暂停](docs/remote-cad-recovery.md)：21 个 MCP 工具，A 桌面“CAD 管理”；旧脚本进程仍运行时拒绝恢复，支持从 A 处理已结束任务留下的暂停。
 
 新增：[A 上的 Codex 分步控制 B 的 SW2023](docs/remote-sw-scripting.md)。
