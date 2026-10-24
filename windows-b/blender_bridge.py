@@ -48,11 +48,11 @@ class BoundedLog(io.TextIOBase):
         pass
 
 
-def snapshot():
+def snapshot(max_objects=80, budget=10000):
     import bpy
     scene = bpy.context.scene
     objects = list(scene.objects)
-    return {'blender_version': bpy.app.version_string, 'pid': os.getpid(),
+    result = {'blender_version': bpy.app.version_string, 'pid': os.getpid(),
             'bridge_protocol': PROTOCOL, 'bridge_sha256': BRIDGE_SHA256,
             'file': bpy.data.filepath, 'modified': bpy.data.is_dirty,
             'scene': scene.name, 'unit_system': scene.unit_settings.system,
@@ -61,7 +61,13 @@ def snapshot():
             'objects': [{'name': o.name, 'type': o.type,
                          'location': list(o.location), 'dimensions': list(o.dimensions),
                          'modifiers': [m.type for m in o.modifiers][:20]}
-                        for o in objects[:80]], 'truncated': len(objects) > 80}
+                        for o in objects[:max_objects]], 'truncated': len(objects) > max_objects}
+    # Chinese names and modifier lists can dominate the relay's ASCII JSON limit.
+    # Keep even the automatic before/after snapshots bounded in large scenes.
+    while result['objects'] and len(json.dumps(result).encode('utf-8')) > budget:
+        result['objects'].pop()
+        result['truncated'] = True
+    return result
 
 
 class Bridge:
@@ -189,7 +195,7 @@ class Bridge:
             report = {'id': identity, 'request_sha256': digest, 'session_id': self.session_id}
             action = params['action']
             with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
-                report['before'] = snapshot()
+                report['before'] = snapshot(16, 6000)
                 if action in ('status', 'inspect'):
                     value = snapshot()
                 elif action == 'script':
@@ -209,7 +215,7 @@ class Bridge:
                         raise RuntimeError('Upstream Blender handler failed: ' + str(value))
                 else:
                     raise ValueError('Action is not a Blender main-thread command')
-                report.update(ok=True, value=value, after=snapshot())
+                report.update(ok=True, value=value, after=snapshot(16, 6000))
                 json.dumps(report, allow_nan=False)  # No implicit repr of bpy objects.
         except Exception as exc:
             report.update(ok=False, error=f'{type(exc).__name__}: {exc}'[:1200],
@@ -217,7 +223,7 @@ class Bridge:
             report.pop('value', None)
             if started:
                 try:
-                    report['after'] = snapshot()
+                    report['after'] = snapshot(16, 6000)
                 except Exception:
                     pass
         report['log_tail'] = output.text

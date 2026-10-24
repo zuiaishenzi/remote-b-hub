@@ -115,6 +115,20 @@ class BlenderTests(unittest.TestCase):
             self.assertFalse(status['connected'])
             self.assertIn('does not match',status['bridge_error'])
 
+    def test_large_unicode_scene_is_bounded_without_claiming_all_objects_returned(self):
+        from types import SimpleNamespace as NS
+        from blender_bridge import snapshot
+        obj=NS(name='复杂中文零件'*10,type='MESH',location=[0.,0.,0.],dimensions=[1.,1.,1.],modifiers=[NS(type='SUBSURF')]*20)
+        scene=NS(name='Scene',objects=[obj]*1000,unit_settings=NS(system='METRIC',scale_length=1),frame_current=1)
+        fake=NS(app=NS(version_string='test'),data=NS(filepath='',is_dirty=False),context=NS(scene=scene))
+        with patch.dict(sys.modules,{'bpy':fake}):
+            result=snapshot()
+            before=snapshot(16,6000)
+        self.assertEqual(result['object_count'],1000)
+        self.assertTrue(result['truncated'])
+        self.assertLessEqual(len(json.dumps(result).encode()),10000)
+        self.assertLessEqual(len(json.dumps(before).encode()),6000)
+
     def test_request_identity_replay_never_executes_twice_or_corrupts_receipt(self):
         bridge = Bridge({'directory': str(self.directory), 'token': 'x'*64, 'port': 18766})
         identity = uuid.uuid4().hex
